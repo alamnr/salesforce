@@ -1,0 +1,32 @@
+<apex:component controller="gcDocument_InventoryTransfer" layout="none" access="global">
+
+<apex:attribute name="attrIdInventoryTransfer" assignTo="{!idTransfer}" type="String" access="global" description="The Id of the Inventory Transfer."/>
+Please find attached a detailed Transfer
+
+***Transfer SUMMARY***
+Transfer Number:  {!rec.Name}
+Date: <apex:outputText value="{0, date, MMMM d','  yyyy}"><apex:param value="{!rec.Outbound_Date__c}" /> </apex:outputText>
+**********************
+
+***TRANSFER LINE ITEMS***
+<apex:repeat value="{!rec.Outbound_Inventory_Movements__r}" var="line">
+{!line.AcctSeedERP__Inventory_Balance__r.AcctSeedERP__Product__r.Name}.....<apex:outputText value="{0, number,###,##0}"><apex:param value="{!line.AcctSeedERP__Quantity__c}"/></apex:outputText>
+</apex:repeat>
+
+*
+***PLEASE SEE ATTACHMENT FOR ALL TRANSFER DETAILS***
+
+
+
+
+
+
+
+
+
+
+
+
+
+[do not delete ref:{!$CurrentPage.parameters.idAttachment}]
+</apex:component>

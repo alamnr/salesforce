@@ -1,0 +1,33 @@
+<apex:component controller="gcDocument_Billing" layout="none" access="global">
+
+<apex:attribute name="attrIdBilling" assignTo="{!idBilling}" type="String" access="global" description="The Id of the Billing."/>
+Please find attached a detailed Billing
+
+***BILLING SUMMARY***
+{!IF((bill.AcctSeed__Total__c >= 0),'Invoice','Credit Memo')} Number:  {!bill.Name}
+Date: <apex:outputText value="{0, date, MMMM d','  yyyy}"><apex:param value="{!bill.AcctSeed__Date__c}" /> </apex:outputText>
+Amount Due:  <apex:outputText value="  {0,number,currency}"><apex:param value="{!bill.AcctSeed__Balance__c}"/></apex:outputText>
+**********************
+
+***BILLING LINE ITEMS***
+<apex:repeat value="{!bill.AcctSeed__Project_Billing_Lines__r}" var="line">
+{!line.AcctSeed__Product__r.Name}.....<apex:outputText value="{0, number,###,##0}"><apex:param value="{!line.AcctSeed__Hours_Units__c}"/></apex:outputText> .... <apex:outputText value="${0, number, ###,##0.00}"><apex:param value="{!line.AcctSeed__Rate__c}"/></apex:outputText>.....<apex:outputText value="${0, number,###,##0.00}"><apex:param value="{!line.AcctSeed__Total__c}"/></apex:outputText>
+</apex:repeat>
+
+*
+***PLEASE SEE ATTACHMENT FOR ALL BILLING DETAILS***
+
+
+
+
+
+
+
+
+
+
+
+
+
+[do not delete ref:{!$CurrentPage.parameters.idAttachment}]
+</apex:component>

@@ -1,0 +1,603 @@
+<apex:page standardController="Inventory_Adjustment__c" extensions="gcInventoryAdjustment_Ext2">
+
+<head>
+<style>
+.link{
+    cursor:pointer;
+    text-decoration:underline;
+    color: blue;
+}
+.highlight{
+    background-color:yellow;
+}
+tr.total td{
+    font-weight: bold;
+}
+div.pq-grid-footer{
+    display:none;
+}
+.pq-row-select{
+    background: #FFFF99 !important;
+}
+</style>
+
+<apex:stylesheet value="{!URLFOR($Resource.GMBLJS__jQueryUI,'/jquery-ui/jquery-ui.min.css')}"/>
+<apex:stylesheet value="{!URLFOR($Resource.GMBLJS__pqGridPro241,'/pqgrid.min.css')}"/>
+
+</head>
+
+<body>
+    <div id="divWrapper">
+        <apex:remoteObjects jsNamespace="RemoteObjectModel">
+            <apex:remoteObjectModel name="AcctSeedERP__Inbound_Inventory_Movement__c" fields="Id"></apex:remoteObjectModel>
+        </apex:remoteObjects>
+
+        <apex:outputPanel id="detailContainer">
+            <apex:detail subject="{!Id}" relatedList="false" id="theDetail" inlineEdit="false"/>
+        </apex:outputPanel>
+
+        <div style="margin:0 auto; width:95%;">
+            <div id="adjustments"></div>
+            <br/>
+            <div id="inventory"></div>
+        </div>
+        <br/>
+        <apex:relatedList subject="{!Id}" list="CombinedAttachments"/>
+    </div>
+</body>
+
+<apex:includeScript value="{!$Resource.GMBLJS__jQuery}"/>
+<apex:includeScript value="{!URLFOR($Resource.GMBLJS__jQueryUI,'/jquery-ui/jquery-ui.min.js')}"/>
+<apex:includeScript value="{!URLFOR($Resource.GMBLJS__pqGridPro241,'/pqgrid.min.js')}"/>
+<apex:includeScript value="{!URLFOR($Resource.GMBLJS__pqGridPro241,'/touch-punch/touch-punch.min.js')}"/>
+<apex:includeScript value="{!$Resource.GMBLJS__accountingJS}"/>
+<apex:includeScript value="{!$Resource.GMBLJS__ExcellentExport}"/>
+<apex:includeScript value="{!$Resource.GMBLJS__gsrSpinner}"/>
+<apex:includeScript value="{!$Resource.GMBLJS__gsrGrid2}"/>
+
+<script>function setFocusOnLoad() {}</script>
+<script type="text/javascript">
+    $j = jQuery.noConflict();
+
+    var adjustmentType;
+    var spinStack = +0;
+
+    $j(document).ready(function()
+    {
+        adjustmentType = '{!Inventory_Adjustment__c.Adjustment_Type__c}';
+        
+        initGrid_adjustments();
+        initGrid_inventory();   
+        
+        refreshAll();  
+    });
+
+    function refreshAll()
+    {
+        refreshGrid_adjustments();
+        refreshGrid_inventory();
+    }
+
+    function initGrid_adjustments()
+    {
+        var gridObj = { title:"Adjustment Lines",
+                        collapsible:{on:false,collapsed:false,toggle:false},
+                        columnTemplate: {sortable:true,editable:false},
+                        dataModel:{data:[], sorting:'local', location:'local', sortDir:'up', sortIndx:'lotName'}, 
+                        detailModel:{cache:false},
+                        dragColumns:{enabled:false},
+                        editable:true,
+                        editModel: {clicksToEdit:1, saveKey: jQuery.ui.keyCode.ENTER, keyUpDown: false, onSave:null, onBlur:'save'},
+                        //editModel:{clicksToEdit:1, pressToEdit:false, filterKeys:true, keyUpDown:true, saveKey:$j.ui.keyCode.ENTER},
+                        //filterModel:{on:true, mode:'AND', header:true},
+                        freezeCols:0,
+                        freezeRows:0,
+                        height:300,
+                        historyModel:{on:false},
+                        hoverMode:'row',
+                        hwrap:false,
+                        numberCell:{show:true},
+                        pageModel: {type:null},
+                        pasteModel:{on:false},
+                        resizable: true,
+                        roundCorners: false,
+                        scrollModel: {autoFit:true},
+                        selectionModel: { type: 'row', mode:'single'},
+                        showBottom:true,
+                        showHeader:true,
+                        showTitle:true,
+                        showTop:true,
+                        showToolbar:false,
+                        sortable:true,
+                        swipeModel:{on:false},
+                        virtualX: false,
+                        //virtualXHeader: false,
+                        virtualY: false,
+                        width:'auto',
+                        wrap:false};
+
+        gridObj.colModel=[{dataIndx:'moveNumber',           title:'Move #',         align:'center', maxWidth:100},
+                          {dataIndx:'productFamily',        title:'Product Family'},
+                          {dataIndx:'productName',          title:'Product Name'},
+                          {dataIndx:'productCode',          title:'Product Code'},
+                          {dataIndx:'warehouseName',        title:'Warehouse'},
+                          {dataIndx:'lotName',              title:'Lot'},
+                          {dataIndx:'qty',                  title:'Adjustment<br/>Qty',             gTotal:true,   dataType:'float',   align:'center', maxWidth:80},
+                          {dataIndx:'amt',                  title:'Adjustment<br/>Amount',          gTotal:true,   dataType:'float',   align:'right',  halign:'center', maxWidth:100},
+                          {dataIndx:'action',               title:'Action',         align:'center', maxWidth:100},
+                          {dataIndx:"scrollSpacer", minWidth:15, maxWidth:15}];
+
+
+        //gGrid.initFormat(gridObj.colModel);
+        //gGrid.initFilter(gridObj.colModel);
+
+        $j.each(gridObj.colModel, function(i,col)
+        {
+            if(col.dataIndx == 'moveNumber')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if (ui.rowData.isTotal) return;
+                        return '<a href="/'+ui.rowData.idMove+'" target="_blank">'+ui.rowData.moveNumber+'</a>';
+                    }
+                });             
+            }
+
+            else if(col.dataIndx == 'qty')
+            {
+                if(adjustmentType != 'Quantity')
+                {
+                    col.hidden = true;
+                    return;
+                }
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.isTotal) 
+                            return accounting.formatNumber(ui.rowData.qty);
+                        else if(ui.rowData.periodIsOpen == 'true' && adjustmentType=='Quantity')
+                            return '<span class="link">'+accounting.formatNumber(ui.rowData.qty)+'</span>';
+                        else
+                            return accounting.formatNumber(ui.rowData.qty);
+                    }
+                });
+
+                if(adjustmentType == 'Quantity')
+                    col.editable = true;
+                else
+                    col.editable = false;
+            }
+
+            else if(col.dataIndx == 'amt')
+            {
+                if(adjustmentType == 'Quantity')
+                {
+                    col.hidden = true;
+                    return;
+                }
+
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.isTotal) 
+                            return accounting.formatMoney(ui.rowData.amt);
+                        else if(ui.rowData.periodIsOpen == 'true' && adjustmentType!='Quantity')
+                            return '<span class="link">'+accounting.formatMoney(ui.rowData.amt)+'</span>';
+                        else
+                            return accounting.formatMoney(ui.rowData.amt);
+                    }
+                });
+
+                if(adjustmentType == 'Quantity')
+                    col.editable = false;
+                else
+                    col.editable = true;
+            }
+
+            else if(col.dataIndx == 'action')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.isTotal) return;
+                        if(ui.rowData.periodIsOpen == 'true')
+                            return '<button type="button" onclick="deleteAdjustment(\''+ui.rowData.idMove+'\','+ui.rowIndx+');">delete</button>';
+                        else return 'closed period';
+                    }
+                });
+            }
+        
+        });
+
+        var $gridDiv = $j('#adjustments');
+
+        $gridDiv.pqGrid(gridObj);
+
+        $gridDiv.on('pqgrideditorbegin', function(event,ui)
+        {
+            //do not allow cell edits if the period is open
+            if(ui.rowData.periodIsOpen == 'true')
+            {
+                var idObject = getIdObject(ui.rowData);
+                selectRow($j('#inventory'),idObject);
+                //ok
+            }
+            else
+            {
+                //quit editing of cell
+                $j(this).pqGrid( "quitEditMode" );
+            }
+        });
+
+        $gridDiv.on('pqgridchange', function(event, ui)
+        {
+            var row = ui.rowList[0];
+            //console.log('row to adjust: '+JSON.stringify(ui.rowList[0]));
+
+            //only respond to grid changes that have all of the following attributes
+
+
+            if(row.type == 'update' &&
+               ui.rowList && 
+               ui.rowList.length == 1 &&
+               row.newRow && 
+               (row.newRow.qty !== undefined || row.newRow.amt !== undefined))
+            {
+                $j(this).pqGrid( "quitEditMode" );
+                if(row.newRow.qty !== undefined)
+                {
+                    if(row.newRow.qty == row.oldRow.qty)
+                        return;
+                    else if(isNaN(row.newRow.qty))
+                    {
+                        alert('The quantity must be numerical.');
+                        row.rowData.qty = row.oldRow.qty;
+                        return;
+                    }                   
+                    else
+                        updateAdjustment(row.rowIndx, row.rowData.idMove, row.newRow.qty, row.rowData.amt, row.rowData);
+                        
+                }
+                else if(row.newRow.amt !== undefined)
+                {
+                    if(row.newRow.amt == row.oldRow.amt)
+                        return;
+                    else if(isNaN(row.newRow.amt))
+                    {
+                        alert('The amount must be numerical.');
+                        row.rowData.amt = row.oldRow.unitCost;
+                        return;
+                    }
+                    else
+                        updateAdjustment(row.rowIndx, row.rowData.idMove, row.rowData.qty, row.newRow.amt, row.rowData);
+                }
+            }
+            return;
+        });
+
+        $gridDiv.on('pqgridrefresh', function(event, ui){
+            gGrid.refreshTotal($j(this),ui.pageData);
+        });
+
+        $gridDiv.on('pqgridrefreshrow', function(event, ui){
+            var dataModel = $j(this).pqGrid( "option", "dataModel" );
+            gGrid.refreshTotal($j(this),dataModel.data);
+        });
+
+        //select the contents of the input text box, when edit commences
+        $gridDiv.on( "focus", "input,textarea,div[contenteditable=true]",  function(evt){
+             $j(this).select();
+        });
+
+        $gridDiv.on('pqgridrowclick', function(event,ui){
+            var idObject = getIdObject(ui.rowData);
+            selectRow($j('#inventory'),idObject);
+        });
+
+    }
+
+    function refreshGrid_adjustments(){
+
+        var $gridDiv = $j('#adjustments');
+
+        gSpinner.show();
+
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.gcInventoryAdjustment_Ext2.retrieveMoves}',
+            '{!Id}',
+            function(result,event){
+                if(event.status){
+                    gGrid.refreshGrid_callback($gridDiv,result);
+                }
+                else{
+                    alert(event.message); 
+                }
+                gSpinner.hide();
+            },
+            {buffer:true, escape:true, timeout:120000});
+    }
+
+    function initGrid_inventory()
+    {
+        var gridObj = { title:"Inventory Detail as of Adjustment Date&nbsp;&nbsp;<span style='font-style:italic'>(click a row to include it in this adjustment)</span>",
+                        collapsible:{on:false,collapsed:false,toggle:false},
+                        columnTemplate: {sortable:true,editable:false},
+                        dataModel:{data:[], sorting:'local', location:'local', sortDir:'up', sortIndx:'lotExpirationDate'}, 
+                        //groupModel: { dataIndx: ["lotExpirationDate"] },
+                        dragColumns:{enabled:false},
+                        editable:false,
+                        editModel: {clicksToEdit:1, saveKey: jQuery.ui.keyCode.ENTER, keyUpDown: false, onSave:null, onBlur:'save'},
+                        //editModel:{clicksToEdit:1, pressToEdit:false, filterKeys:true, keyUpDown:true, saveKey:$j.ui.keyCode.ENTER},
+                        filterModel:{on:true, mode:'AND', header:true},
+                        freezeCols:0,
+                        freezeRows:0,
+                        height:300,
+                        historyModel:{on:false},
+                        hoverMode:'row',
+                        hwrap:false,
+                        numberCell:{show:true},
+                        pageModel: {type:null},
+                        pasteModel:{on:false},
+                        resizable: true,
+                        roundCorners: false,
+                        scrollModel: {autoFit:true},
+                        selectionModel: { type: 'row', mode: 'single'},
+                        showBottom:true,
+                        showHeader:true,
+                        showTitle:true,
+                        showTop:true,
+                        showToolbar:false,
+                        sortable:true,
+                        swipeModel:{on:false},
+                        //virtualX: false,
+                        //virtualXHeader: false,
+                        virtualY: false,
+                        width:'auto',
+                        wrap:false};
+
+        gridObj.colModel=[{dataIndx:'locationName',             title:'Location',       hidden: true},
+                          {dataIndx:'productFamily',            title:'Product Family', gFilter:'select'},
+                          {dataIndx:'productName',              title:'Product Name',   gFilter:'text'},
+                          {dataIndx:'productCode',              title:'Product Code',   gFilter:'text'},
+                          {dataIndx:'lotName',                  title:'Lot'},
+                          {dataIndx:"lotExpirationDate",        title:"Expiration",     align:"center", dataType:"date", maxWidth:100},
+                          {dataIndx:'qty',                      title:'Qty',            dataType:'float', gFormat:'number', align:'center', maxWidth:75, gTotal:true},
+                          {dataIndx:'avg',                      title:'Unit Cost',      dataType:'float', gFormat:'money',  align:'right',  maxWidth:75},
+                          {dataIndx:'amt',                      title:'Value',          dataType:'float', gFormat:'money',  align:'right',  maxWidth:100, gTotal:true},
+                          {dataIndx:"scrollSpacer", minWidth:15, maxWidth:15}];
+
+        gGrid.initFormat(gridObj.colModel);
+        gGrid.initFilter(gridObj.colModel);
+
+        var $gridDiv = $j('#inventory');
+
+        $gridDiv.pqGrid(gridObj);
+
+        $gridDiv.on('pqgridrefresh', function(event, ui){
+            gGrid.refreshTotal($j(this),ui.pageData);
+        });
+
+        $gridDiv.on('pqgridrefreshrow', function(event, ui){
+            var dataModel = $j(this).pqGrid( "option", "dataModel" );
+            gGrid.refreshTotal($j(this),dataModel.data);
+        });
+
+        $gridDiv.on('pqgridrowclick', function(event, ui)
+        {
+            createAdjustment(ui.rowData);
+        });
+    }
+
+    function refreshGrid_inventory(){
+
+        var $gridDiv = $j('#inventory');
+
+        gSpinner.show();
+
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.gcInventoryAdjustment_Ext2.retrieveInventory}',
+            '{!Id}',null,
+            function(result,event){
+                if(event.status){
+                    //console.log('inventory 0: '+JSON.stringify(result[0]));
+                    gGrid.refreshGrid_callback($gridDiv,result);
+                }
+                else{
+                    alert(event.message); 
+                }
+                gSpinner.hide();
+            },
+            {buffer:true, escape:true, timeout:120000});
+    }
+
+    function createAdjustment(rowData)
+    {
+        var idObject = getIdObject(rowData);
+
+        gSpinner.show();
+        var $gridDiv = $j('#adjustments');
+        $gridDiv.pqGrid('setSelection',null);
+        
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.gcInventoryAdjustment_Ext2.createAdjustment}',
+            '{!Id}',idObject,
+            function(result,event){
+                if(event.status){
+                    if(result.idProduct)
+                    {
+                        var rowIndx = $gridDiv.pqGrid('addRow',{rowData:result, checkEditable:false, source:'add'});
+                        $gridDiv.pqGrid( "scrollRow", { rowIndxPage: rowIndx } );
+                        $gridDiv.pqGrid( "setSelection", {rowIndx:rowIndx});
+                    }
+                    else
+                    {
+                        //cycle over the rows, to see if a row already exists, and if so, select it
+                        jQuery.each($gridDiv.pqGrid('option','dataModel.data'), function(i,row)
+                        {
+                            if(row.idItem == idObject || row.idLot == idObject || row.idProduct == idObject)
+                            {
+                                //rowOld = row;
+                                var rowIndx = $gridDiv.pqGrid('getRowIndx',{rowData:row}).rowIndx;
+                                $gridDiv.pqGrid( "scrollRow", { rowIndxPage: rowIndx } );
+                                $gridDiv.pqGrid( "setSelection", {rowIndx:rowIndx});
+                                return false;
+                            }
+                        });
+                    }
+                }
+                else{
+                    alert(event.message);
+                    refreshAll();
+                }
+                gSpinner.hide();
+            },
+            {buffer:true, escape:true, timeout:120000});
+    }
+
+    function deleteAdjustment(idMove, rowIndx)
+    {
+        gSpinner.show();
+
+        var rom = new RemoteObjectModel.AcctSeedERP__Inbound_Inventory_Movement__c();
+
+        rom.del(idMove, function(error,ids)
+        {
+            if (error) 
+            { 
+                alert(error.message);
+                refreshAll();
+                gSpinner.hide();       
+            } 
+            else 
+            {   
+                //delete the adjustments row
+                var $gridDiv = $j('#adjustments');
+                var rowData = $gridDiv.pqGrid( "getRowData", {rowIndx: rowIndx} );
+                var idObject = getIdObject(rowData);
+                $gridDiv.pqGrid( "deleteRow", {rowIndx: rowIndx} );
+                $gridDiv.pqGrid( "removeData", {rowIndx: rowIndx} );
+
+                //update the inventory row
+                updateInventoryRow(idObject);
+                gSpinner.hide();
+            }
+        }); 
+    }
+
+    function updateAdjustment(rowIndx, idMove, qtyNew, amtNew, rowData)
+    {
+        var idObject = getIdObject(rowData);
+        var $gridDiv = $j('#adjustments');
+        gSpinner.show();
+
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.gcInventoryAdjustment_Ext2.updateAdjustment}',
+            rowData.idMove,rowData.qty,rowData.amt,
+            function(result,event){
+                if(event.status){
+
+                    $gridDiv.pqGrid( "refreshRow", {rowIndx: rowIndx} );
+                    $gridDiv.pqGrid( "setSelection", null);
+                    $gridDiv.pqGrid( "setSelection", {rowIndx: rowIndx} );
+
+                    updateInventoryRow(idObject);
+                }
+                else{
+                    alert(event.message);
+                    refreshAll();
+                }
+                gSpinner.hide();
+            },
+            {buffer:true, escape:true, timeout:120000});
+    }
+
+    function updateInventoryRow(idObject)
+    {
+        //the purpose of this method is to find the inventory row corresponding to a particular product/lot/item, and update it.
+        //the idea is to update the appropriate row in the inventory grid, after an adjustment is made in the adjustment grid.
+
+        var $gridDiv = $j('#inventory');
+
+        gSpinner.show();
+
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.gcInventoryAdjustment_Ext2.retrieveInventory}',
+            '{!Id}',idObject,
+            function(result,event){
+                if(event.status){
+
+                    gGrid.clearFilters($gridDiv);
+                    $gridDiv.pqGrid( "setSelection", null);
+
+                    var rowIndx;
+
+                    //cycle over the inventory row data, to identify the existing inventory row
+                    //and if a row exists delete it
+                    jQuery.each($gridDiv.pqGrid('option','dataModel.data'), function(i,row)
+                    {
+                        if(row.idItem == idObject || row.idLot == idObject || row.idProduct == idObject)
+                        {
+                            rowIndx = $gridDiv.pqGrid('getRowIndx',{rowData:row}).rowIndx;
+                            return false;
+                        }
+                    });
+
+                    //console.log('rowIndx found: '+rowIndx);
+
+                    //delete the existing inventory row
+                    if(rowIndx != null)
+                    {
+                        $gridDiv.pqGrid( "deleteRow", {rowIndx: rowIndx} );
+                        $gridDiv.pqGrid( "removeData", {rowIndx: rowIndx} );
+                    }
+
+                    //if an inventory row was retrieved from the database, (re-) insert the row in the inventory grid
+                    if(result.length > 0)
+                    {
+                        if(!rowIndx) rowIndx = +0;
+                        rowIndx = $gridDiv.pqGrid('addRow',{rowData:result[0], rowIndx:rowIndx, checkEditable:false, source:'add'});
+                        $gridDiv.pqGrid( "scrollRow", { rowIndxPage: rowIndx } );
+                        $gridDiv.pqGrid( "setSelection", {rowIndx:rowIndx} );
+                    }
+
+                }
+                else{
+                    alert(event.message); 
+                }
+                gSpinner.hide();
+            },
+            {buffer:true, escape:true, timeout:120000});
+    }
+
+    function getIdObject(rowData)
+    {
+        if(rowData.idItem && rowData.idItem != null)
+            return rowData.idItem;
+        else if(rowData.idLot && rowData.idLot != null)
+            return rowData.idLot;
+        else
+            return rowData.idProduct;       
+    }
+
+    function selectRow($gridDiv, idObject)
+    {
+        gGrid.clearFilters($gridDiv);
+        $gridDiv.pqGrid( "setSelection", null );
+        
+        jQuery.each($gridDiv.pqGrid('option','dataModel.data'), function(i,row)
+        {
+            if(row.idItem == idObject || row.idLot == idObject || row.idProduct == idObject)
+            {
+                var rowIndx = $gridDiv.pqGrid('getRowIndx',{rowData:row}).rowIndx;
+                $gridDiv.pqGrid( "scrollRow", { rowIndxPage: rowIndx } );
+                $gridDiv.pqGrid( "setSelection", {rowIndx:rowIndx} );
+                return false;
+            }
+        });
+    }
+
+
+
+</script>
+</apex:page>

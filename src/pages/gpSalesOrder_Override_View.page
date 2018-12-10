@@ -1,0 +1,689 @@
+<apex:page standardController="AcctSeedERP__Sales_Order__c" extensions="gcSalesOrder_Override_View" cache="false">
+
+<head>
+<style>
+.link{
+    cursor:pointer;
+    text-decoration:underline;
+}
+table{
+    width:100%;
+    border-collapse:collapse;
+}
+tr.total td{
+    font-weight: bold;
+}
+div.pq-grid-footer{
+    display:none;
+}
+</style>
+
+<apex:stylesheet value="{!URLFOR($Resource.GMBLJS__jQueryUI,'/jquery-ui/jquery-ui.min.css')}"/>
+<apex:stylesheet value="{!URLFOR($Resource.GMBLJS__pqGridPro241,'/pqgrid.min.css')}"/>
+
+</head>
+
+<body>
+    <apex:remoteObjects jsNamespace="RemoteObjectModel">
+        <apex:remoteObjectModel name="AcctSeedERP__Outbound_Inventory_Movement__c" fields="Id,AcctSeedERP__Quantity__c"></apex:remoteObjectModel>
+    </apex:remoteObjects>
+
+    <br/>
+
+    <apex:outputPanel id="detailContainer">
+        <apex:detail subject="{!AcctSeedERP__Sales_Order__c.Id}" relatedList="false" id="theDetail" oncomplete="refreshGrid_salesOrderLines()" inlineEdit="true"/>
+    </apex:outputPanel>
+    <br/>
+    <apex:form >
+        <apex:actionFunction name="rerenderDetail" reRender="detailContainer"/>
+        <apex:pageBlock mode="edit" title="Sales Order Lines">
+            <apex:pageBlockButtons location="top">
+                <button type="button" class="btn" id="btnLaunchSearchProduct" onclick="launchSearchProduct();">New Sales Order Line</button>
+            </apex:pageBlockButtons>
+            <div style="margin:5px;"><span style="font-weight:bold;">IMPORTANT NOTE:  to undo a price override, click on the price and clear the value (i.e. make it blank).</span></div>
+            <div><div id="salesOrderLines"></div></div>
+
+        </apex:pageBlock>
+    </apex:form>
+    <br/>
+
+<apex:relatedList subject="{!Id}" list="AcctSeedERP__Billings__r"/>
+<apex:relatedList subject="{!Id}" list="CombinedAttachments"/>
+<apex:relatedList subject="{!Id}" list="Reversal__r"/>
+<apex:relatedList subject="{!Id}" list="OpenActivities" />
+<apex:relatedList subject="{!Id}" list="ActivityHistories" />
+
+</body>
+
+<apex:includeScript value="{!$Resource.GMBLJS__jQuery}"/>
+<apex:includeScript value="{!URLFOR($Resource.GMBLJS__jQueryUI,'/jquery-ui/jquery-ui.min.js')}"/>
+<apex:includeScript value="{!URLFOR($Resource.GMBLJS__pqGridPro241,'/pqgrid.min.js')}"/>
+<apex:includeScript value="{!URLFOR($Resource.GMBLJS__pqGridPro241,'/touch-punch/touch-punch.min.js')}"/>
+<apex:includeScript value="{!$Resource.GMBLJS__accountingJS}"/>
+<apex:includeScript value="{!$Resource.GMBLJS__ExcellentExport}"/>
+<apex:includeScript value="{!$Resource.GMBLJS__gsrSpinner}"/>
+<apex:includeScript value="{!$Resource.GMBLJS__gsrGrid2}"/>
+
+<script>function setFocusOnLoad() {}</script>
+<script type="text/javascript">
+    $j = jQuery.noConflict();
+
+    $j(document).ready(function()
+    {
+        initGrid_salesOrderLines();
+        refreshGrid_salesOrderLines();      
+    });
+
+    function refreshAll()
+    {
+        refreshGrid_salesOrderLines();
+        rerenderDetail();
+    }
+
+    function initGrid_salesOrderLines()
+    {
+        var gridObj = { title:"Sales Order Lines",
+                        collapsible:{on:false,collapsed:false,toggle:false},
+                        columnTemplate: {sortable:true,editable:false, minWidth:80},
+                        dataModel:{data:[], sorting:'local', location:'local', sortDir:'up', sortIndx:'productName'}, 
+                        dragColumns:{enabled:false},
+                        editable:true,
+                        editModel: {clicksToEdit:1, saveKey: jQuery.ui.keyCode.ENTER, keyUpDown: false, onSave:null, onBlur:'save'},
+                        //editModel:{clicksToEdit:1, pressToEdit:false, filterKeys:true, keyUpDown:true, saveKey:$j.ui.keyCode.ENTER},
+                        //filterModel:{on:true, mode:'AND', header:true},
+                        freezeCols:0,
+                        freezeRows:0,
+                        height:400,
+                        historyModel:{on:false},
+                        hoverMode:'row',
+                        hwrap:false,
+                        numberCell:{show:true},
+                        pageModel: {type:null},
+                        pasteModel:{on:false},
+                        resizable: true,
+                        roundCorners: false,
+                        scrollModel: {autoFit:true},
+                        selectionModel: { type: null},
+                        showBottom:true,
+                        showHeader:true,
+                        showTitle:false,
+                        showTop:true,
+                        showToolbar:false,
+                        sortable:true,
+                        swipeModel:{on:false},
+                        virtualX: false,
+                        //virtualXHeader: false,
+                        virtualY: false,
+                        width:'auto',
+                        wrap:false};
+
+        gridObj.colModel=[{dataIndx:'action',               title:'Action',         align:'center', maxWidth:80},
+                          {dataIndx:'productName',          title:'Product Name', minWidth:200},
+                          {dataIndx:'lotName',              title:'Lot',                                                maxWidth:200},
+                          {dataIndx:'lotExpirationDate',    title:'Expiration',                     dataType:'date',    align:'center', maxWidth:120},
+                          {dataIndx:'pricingUnits',         title:'Pricing<br/>Units',              align:'center',     maxWidth:75},
+                          {dataIndx:'lotVariantQty',        title:'Variant<br/>Qty',                dataType:'float',   align:'center', maxWidth:75, gFormat:'number'},
+                          {dataIndx:'variantUnitPrice',     title:'Variant<br/>Price',              dataType:'float',   align:'right',  maxWidth:110, editable:true},
+                          {dataIndx:'unitPrice',            title:'Unit&nbsp;<br/>Price',           dataType:'float',   align:'right',  maxWidth:110, gFormat:'money', editable:true},
+                          {dataIndx:'priceOverride',        title:'Price<br/>Override',             gFormat:'checkbox', maxWidth:75},
+                          {dataIndx:'qtyOrdered',           title:'Qty<br/>Ordered',                gFormat:'number',   maxWidth:75, gTotal:true, editable:true},
+                          {dataIndx:'qtyFilled',            title:'Qty<br/>Filled',                 gFormat:'number',   maxWidth:75, gTotal:true, editable:true},
+                          {dataIndx:'totalOrdered',         title:'Total&nbsp;<br/>Ordered',        align:'right',  gFormat:'money', maxWidth:110, gTotal:true},
+                          {dataIndx:'totalFilled',          title:'Total&nbsp;<br/>Filled',         align:'right',  gFormat:'money', maxWidth:110, gTotal:true},
+                          {dataIndx:'expense',              title:'Total&nbsp;<br/>Cost',           align:'right',  gFormat:'money', maxWidth:110, gTotal:true},
+                          {dataIndx:"scrollSpacer", minWidth:15, maxWidth:15}];
+
+        gGrid.initFormat(gridObj.colModel);
+        //gGrid.initFilter(gridObj.colModel);
+
+        $j.each(gridObj.colModel, function(i,col)
+        {
+            if(col.dataIndx == 'action')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.isTotal) return;
+                        var myEditURL = '/'+ui.rowData.idLine+'/e?retURL={!$CurrentPage.URL}';
+                        var myViewURL = '/'+ui.rowData.idLine;
+
+                        var myHTML =  '<a href=\"'+myViewURL+'\" target=\"_self\">view</a>';
+                        if(ui.rowData.billed == 'false' && (ui.rowData.filled == 'false' || ui.rowData.periodIsOpen == 'true'))
+                        {
+                            //myHTML += '&nbsp;&nbsp;<a href=\"'+myEditURL+'\" target=\"_self\">edit</a>';
+                            myHTML += '&nbsp;&nbsp;<span class="link" onclick="deleteLine(\''+ui.rowData.idLine+'\','+ui.rowIndx+');">del</span>';
+                        }
+
+                        return myHTML;
+                    }
+                });             
+            }
+            else if(col.dataIndx == 'productName')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.isTotal) return;
+                        var myHTML = ui.rowData.productName;
+                        if(ui.rowData.productCode)
+                        {
+                            //a new sales order line can be added only if the period of the Sales Order is still open
+                            if(ui.rowData.billed == 'false' && ui.rowData.periodIsOpen == 'true')
+                            myHTML += '<br/><span class="link" onclick="launchSearchProductThisCode(\''+ui.rowData.productCode+'\')">'+ui.rowData.productCode+'</span>&nbsp;&nbsp;';
+                            else
+                            myHTML += '<br/>'+ui.rowData.productCode;
+                        }
+                        return myHTML;
+                    }
+                });
+            }
+            else if(col.dataIndx == 'lotName')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if (ui.rowData.isTotal) return;
+                        var myHTML = '';
+                        if(ui.rowData.lotName)
+                            myHTML += ui.rowData.lotName;
+
+                        //a new sales order line can be added only if the period of the Sales Order is still open
+                        if(ui.rowData.billed == 'false' && ui.rowData.periodIsOpen == 'true' && ui.rowData.isLotTracked == 'true')
+                        myHTML += '<br/><span class="link" onclick="launchSearchProductThisCode(\''+ui.rowData.productCode+'\')">select</span>&nbsp;&nbsp;';
+
+                        return myHTML;
+                    }
+                });                 
+            }
+            else if(col.dataIndx == 'variantUnitPrice')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.isTotal || ui.rowData.isVariablePrice == 'false') return '';
+                        var myHTML = '';
+                        if(ui.rowData.billed == 'false')
+                            myHTML += '<span class="link">'+accounting.formatMoney(ui.rowData.variantUnitPrice,{precision:6})+'</span>';
+                        else
+                            myHTML += accounting.formatMoney(ui.rowData.variantUnitPrice,{precision:6});
+                        return myHTML;
+                    }
+                });
+            }
+            else if(col.dataIndx == 'unitPrice')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.isTotal) return '';
+                        if(ui.rowData.isVariablePrice == 'true' || ui.rowData.billed == 'true') return accounting.formatMoney(ui.rowData.unitPrice);
+                        return '<span class="link">'+accounting.formatMoney(ui.rowData.unitPrice)+'</span>';
+                    }
+                });
+            }
+            else if(col.dataIndx == 'qtyOrdered')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.isTotal) 
+                            return accounting.formatNumber(ui.rowData.qtyOrdered);
+                        else if(ui.rowData.billed == 'false')
+                            return '<span class="link">'+accounting.formatNumber(ui.rowData.qtyOrdered)+'</span>';
+                        else
+                            return accounting.formatNumber(ui.rowData.qtyOrdered);
+                    }
+                });
+            }
+            else if(col.dataIndx == 'qtyFilled')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.isTotal) 
+                            return accounting.formatNumber(ui.rowData.qtyFilled);
+                        else if(ui.rowData.isInventory == 'false')
+                            return '';
+                        else if(ui.rowData.billed == 'false' && ui.rowData.periodIsOpen == 'true')
+                            return '<span class="link">'+accounting.formatNumber(ui.rowData.qtyFilled)+'</span>';
+                        else
+                            return accounting.formatNumber(ui.rowData.qtyFilled);
+                    }
+                });
+            }    
+        });
+
+        var $gridDiv = $j('#salesOrderLines');
+
+        $gridDiv.pqGrid(gridObj);
+
+        $gridDiv.on('pqgridrefresh', function(event, ui){
+            gGrid.refreshTotal($j(this),ui.pageData);
+        });
+
+        $gridDiv.on('pqgrideditorbegin', function(event,ui)
+        {
+            //do not allow cell edits if the period is open
+            if(ui.rowData.periodIsOpen == 'true' && ui.rowData.billed == 'false' &&
+                (ui.dataIndx == 'variantUnitPrice' && ui.rowData.isVariablePrice == 'true') ||
+                (ui.dataIndx == 'unitPrice' && ui.rowData.isVariablePrice == 'false') ||
+                (ui.dataIndx == 'qtyOrdered') ||
+                (ui.dataIndx == 'qtyFilled' && ui.rowData.isInventory == 'true'))
+            {
+                //ok
+            }
+            else
+            {
+                //quit editing of cell
+                $j(this).pqGrid( "quitEditMode" );              
+            }
+        });
+
+        $gridDiv.on('pqgridchange', function(event, ui)
+        {
+            var row = ui.rowList[0];
+
+            //only respond to grid changes that have all of the following attributes
+            if(row.type == 'update' &&
+               ui.source != 'xyz' &&    
+               ui.rowList && 
+               ui.rowList.length == 1 &&
+               row.newRow)
+            {
+                var newRow = row.newRow;
+                var oldRow = row.oldRow;
+                var rowData = row.rowData;
+                var idLine = row.rowData.idLine;
+                //console.log('row: '+JSON.stringify(row));
+                var rowIndx = row.rowIndx;
+
+                if(newRow.variantUnitPrice !== undefined && newRow.variantUnitPrice != oldRow.variantUnitPrice)
+                {
+                    if(newRow.variantUnitPrice == null || (!isNaN(newRow.variantUnitPrice) && newRow.variantUnitPrice >= 0))
+                        updatePrice(rowIndx, idLine, newRow.variantUnitPrice);
+                    else
+                    {
+                        alert('The Variant Unit Price must be either blank (to undo a price override) or greater than zero.');
+                        rowData.variantUnitPrice = oldRow.variantUnitPrice;
+                    }
+                }
+                else if(newRow.unitPrice !== undefined && newRow.unitPrice != oldRow.unitPrice)
+                {
+                    if(newRow.unitPrice == null || (!isNaN(newRow.unitPrice) && newRow.unitPrice >= 0))
+                        updatePrice(rowIndx, idLine, newRow.unitPrice);
+                    else
+                    {
+                        alert('The Unit Price must be either blank (to undo a price override) or greater than zero.');
+                        rowData.unitPrice = oldRow.unitPrice;
+                    }
+                }
+                else if(newRow.qtyOrdered !== undefined && newRow.qtyOrdered != oldRow.qtyOrdered)
+                {
+                    if(!isNaN(newRow.qtyOrdered) && newRow.qtyOrdered != '')
+                        updateQtyOrdered(rowIndx, idLine, newRow.qtyOrdered);
+                    else
+                    {
+                        alert('The Quantity Ordered must be numerical.');
+                        rowData.qtyOrdered = oldRow.qtyOrdered;
+                    }
+                }
+                else if(newRow.qtyFilled !== undefined && newRow.qtyFilled != oldRow.qtyFilled)
+                {
+                    if(!isNaN(newRow.qtyFilled) && newRow.qtyFilled != '')
+                        updateQtyFilled(rowIndx, idLine, newRow.qtyFilled);
+                    else
+                    {
+                        alert('The Quantity Filled must be numerical.');
+                        rowData.qtyFilled = oldRow.qtyFilled;
+                    }
+                }
+                //ok to continue
+            }
+        });
+
+        //select the contents of the input text box, when edit commences
+        $gridDiv.on( "focus", "input,textarea,div[contenteditable=true]",  function(evt){
+             $j(this).select();
+        });
+    }
+
+    function refreshGrid_salesOrderLines(){
+        var $gridDiv = $j('#salesOrderLines');
+        $gridDiv.pqGrid('showLoading');
+
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.gcSalesOrder_Override_View.retrieveSalesOrderLines}',
+            '{!Id}',
+            function(result,event){
+                if(event.status)
+                {
+                    gGrid.refreshGrid_callback($gridDiv,result);
+                }
+                else
+                {
+                    alert(event.message); 
+                }
+                $gridDiv.pqGrid('hideLoading');
+            },
+            {buffer:true, escape:true, timeout:120000});
+    }
+
+    function updatePrice(rowIndx, idLine, unitPrice)
+    {
+        var $gridDiv = $j('#salesOrderLines');
+        $gridDiv.pqGrid('showLoading');
+
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.gcSalesOrder_Override_View.updatePrice}',
+            idLine, unitPrice,
+            function(result,event){
+                if(event.status)
+                {
+                    $gridDiv.pqGrid('deleteRow',{rowIndx:rowIndx});
+                    $gridDiv.pqGrid('removeData',{rowIndx:rowIndx});
+                    $gridDiv.pqGrid('addRow',{rowIndx:rowIndx, rowData:result, checkEditable:false, source:'add'});
+                    rerenderDetail();
+                }
+                else
+                {
+                    alert(event.message);
+                    refreshAll();
+                }
+                $gridDiv.pqGrid('hideLoading');
+            },
+            {buffer:true, escape:true, timeout:120000});        
+    }
+
+    function updateQtyOrdered(rowIndx, idLine, qty)
+    {
+        var $gridDiv = $j('#salesOrderLines');
+        $gridDiv.pqGrid('showLoading');
+
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.gcSalesOrder_Override_View.updateQtyOrdered}',
+            idLine, qty,
+            function(result,event){
+                if(event.status)
+                {
+                    $gridDiv.pqGrid('deleteRow',{rowIndx:rowIndx});
+                    $gridDiv.pqGrid('removeData',{rowIndx:rowIndx});
+                    $gridDiv.pqGrid('addRow',{rowIndx:rowIndx, rowData:result, checkEditable:false, source:'add'});
+                    rerenderDetail();
+                }
+                else
+                {
+                    alert(event.message);
+                    refreshAll();
+                }
+                $gridDiv.pqGrid('hideLoading');
+            },
+            {buffer:true, escape:true, timeout:120000});        
+    }
+
+    function updateQtyFilled(rowIndx, idLine, qty)
+    {
+        var $gridDiv = $j('#salesOrderLines');
+        $gridDiv.pqGrid('showLoading');
+
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.gcSalesOrder_Override_View.updateQtyFilled}',
+            idLine, qty,
+            function(result,event){
+                if(event.status)
+                {
+                    $gridDiv.pqGrid('deleteRow',{rowIndx:rowIndx});
+                    $gridDiv.pqGrid('removeData',{rowIndx:rowIndx});
+                    $gridDiv.pqGrid('addRow',{rowIndx:rowIndx, rowData:result, checkEditable:false, source:'add'});
+                    rerenderDetail();
+                }
+                else
+                {
+                    alert(event.message);
+                    refreshAll();
+                }
+                $gridDiv.pqGrid('hideLoading');
+            },
+            {buffer:true, escape:true, timeout:120000});        
+    }
+
+    function deleteLine(idLine, rowIndx)
+    {
+        var $gridDiv = $j('#salesOrderLines');
+        $gridDiv.pqGrid('showLoading');
+
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.gcSalesOrder_Override_View.deleteSalesOrderLine}',
+            idLine,
+            function(result,event){
+                if(event.status)
+                {
+                    $gridDiv.pqGrid('deleteRow',{rowIndx:rowIndx});
+                    $gridDiv.pqGrid('removeData',{rowIndx:rowIndx});
+                    rerenderDetail();
+                }
+                else
+                {
+                    alert(event.message);
+                    refreshAll();
+                }
+                $gridDiv.pqGrid('hideLoading');
+            },
+            {buffer:true, escape:true, timeout:120000});        
+    }
+
+    function launchSearchProductThisCode(productCode)
+    {
+        launchSearchProduct();
+        $j('#inputSearchString').val(productCode);
+        searchProduct();     
+    }
+
+    function launchSearchProduct()
+    {
+        var $dialogDiv = $j('<div style=\"z-index:100 !important;\"></div>');
+        var $gridDiv = $j('<div id=\"productSearchResults\"></div>');
+        $dialogDiv.append($gridDiv);
+
+        $dialogDiv.dialog({
+            autoOpen: false,
+            height: 350,
+            width: '90%',
+            modal: true,
+            position:{my:'center bottom', at:'center top', of:'#salesOrderLines'},
+            close:function(){$gridDiv.pqGrid('destroy'); $gridDiv.remove(); $dialogDiv.dialog('destroy'); $dialogDiv.remove();},
+            open:function(){initGrid_searchProduct($gridDiv);},
+            title: 'Add Line(s) to Sales Order'
+        });
+
+        $dialogDiv.dialog('open');
+        $j('#inputSearchString').focus();
+    }
+
+    var keyStrokeTimeout = window.setTimeout(function(){},0);
+
+    function searchProduct()
+    {   
+        //new keystrokes reset the delay
+        window.clearTimeout(keyStrokeTimeout);
+
+        var searchString = $j('#inputSearchString').val();
+        if(searchString.length > 1){} //OK
+        else return;
+
+        keyStrokeTimeout = window.setTimeout(refreshGrid_searchProduct,500, searchString);
+    }
+
+    function addLine(idObject,rowIndx)
+    {
+        gSpinner.show();
+        var $gridDiv = $j('#productSearchResults');
+
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.gcSalesOrder_Override_View.createSalesOrderLine}',
+            '{!Id}',idObject,
+            function(result,event)
+            {
+                if(event.status)
+                {
+                    var qtyThisWhs = $gridDiv.pqGrid( "getRowData", {rowIndx:rowIndx}).qtyThisWhs;
+                    if(!isNaN(qtyThisWhs))
+                    {
+                        $gridDiv.pqGrid( "getRowData", {rowIndx:rowIndx}).qtyThisWhs = qtyThisWhs - 1;
+                        $gridDiv.pqGrid( "getRowData", {rowIndx:rowIndx}).alreadyIncluded = 'true';
+                    }
+
+                    $gridDiv.pqGrid("refreshRow",{rowIndx:rowIndx});
+                    refreshAll();
+                }
+                else
+                {
+                    alert(event.message); 
+                }
+                gSpinner.hide();
+            },
+            {buffer:true, escape:true, timeout:120000});        
+    }
+
+    function initGrid_searchProduct($gridDiv)
+    {
+        var gridObj = { title:"Search Products:&nbsp;&nbsp;<input id=\"inputSearchString\" type=\"text\" length=\"20\" onkeyup=\"searchProduct()\"/>",
+                        collapsible:{on:false,collapsed:false,toggle:false},
+                        columnTemplate: {sortable:false, minWidth:80},
+                        dataModel:{data:[], sorting:'local', location:'local', sortDir:'up', sortIndx:'lotExpirationDate'}, 
+                        dragColumns:{enabled:false},
+                        editable:false,
+                        filterModel:{on:false, mode:'AND', header:false},
+                        freezeCols:0,
+                        freezeRows:0,
+                        height:300,
+                        historyModel:{on:false},
+                        hoverMode:'row',
+                        hwrap:false,
+                        numberCell:{show:false},
+                        pageModel: {type:null},
+                        pasteModel:{on:false},
+                        resizable: true,
+                        roundCorners: false,
+                        scrollModel: {autoFit:true},
+                        selectionModel: { type: null},
+                        showBottom:true,
+                        showHeader:true,
+                        showTitle:true,
+                        showTop:true,
+                        showToolbar:false,
+                        sortable:false,
+                        swipeModel:{on:false},
+                        virtualX: false,
+                        //virtualXHeader: false,
+                        virtualY: false,
+                        width:'auto',
+                        wrap:false};
+
+        gridObj.colModel=[{dataIndx:'productName',                  title:'Product Name'},
+                          {dataIndx:'productCode',                  title:'Product Code',                                                   maxWidth:150},
+                          {dataIndx:'lotVariantQty',                title:'Var.Qty',                align:'center',     dataType:'float',   maxWidth:100},                          
+                          {dataIndx:'lotName',                      title:'Lot',                                                            maxWidth:150},
+                          {dataIndx:'lotExpirationDate',            title:'Expiration',             align:'center',     dataType:'date',    maxWidth:120},
+                          {dataIndx:'unitCost',                     title:'Unit&nbsp;<br/>Cost',    align:'center',     dataType:'float',   gFormat:'money', maxWidth:75},
+                          {dataIndx:"qtyOtherWhs",                  title:"Qty<br/>other whs",      align:'center',     dataType:'float', gFormat:'number', maxWidth:75},
+                          {dataIndx:"qtyThisWhs",                   title:"Qty<br/>this whs",       align:'center',     dataType:'float', gFormat:'number', maxWidth:75},                        
+                          {dataIndx:'action',                       title:'Action',                 align:'center'},
+                          {dataIndx:"scrollSpacer", minWidth:15, maxWidth:15}];
+
+
+        gGrid.initFormat(gridObj.colModel);
+        gGrid.initFilter(gridObj.colModel);
+
+        $j.each(gridObj.colModel, function(i,col)
+        {
+            if(col.dataIndx == 'qtyThisWhs')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(!isNaN(ui.rowData.qtyThisWhs) && parseFloat(ui.rowData.qtyThisWhs) > 0)
+                            return accounting.formatNumber(ui.rowData.qtyThisWhs);
+                        else return '';
+                    }
+                }); 
+            }
+            else if(col.dataIndx == 'qtyOtherWhs')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(!isNaN(ui.rowData.qtyOtherWhs) && parseFloat(ui.rowData.qtyOtherWhs) > 0)
+                            return accounting.formatNumber(ui.rowData.qtyOtherWhs);
+                        else return '';
+                    }
+                }); 
+            }
+            else if(col.dataIndx == 'lotExpirationDate')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        //for products for which there is no inventory, the dummy expiration date is used to sort them to the bottom.
+                        if(ui.rowData.lotExpirationDate == '12/31/2199') return '';
+                    }
+                }); 
+            }       
+            else if(col.dataIndx == 'action')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+
+                        if(ui.rowData.isTotal) return;
+                        if(ui.rowData.alreadyIncluded == 'true') return 'already included';
+                        if(ui.rowData.isInventory == 'true' && (isNaN(ui.rowData.qty) || parseFloat(ui.rowData.qty) <= 0)) return 'no inventory';                        
+                        if(ui.rowData.isInventory == 'true' && (isNaN(ui.rowData.qtyThisWhs) || parseFloat(ui.rowData.qtyThisWhs) <= 0)) return 'no inventory this whs';
+                        
+                        var idObject = getIdObject(ui.rowData);
+                        return '<button type="button" class="btn" onclick=\"addLine(\''+idObject+'\','+ui.rowIndx+')\">Add to Order</button>';
+                    }
+                });
+            }
+        });
+
+        $gridDiv.pqGrid(gridObj);
+
+        $gridDiv.on('pqgridrefresh', function(event, ui)
+        {
+            gGrid.refreshTotal($j(this),ui.pageData);
+        });     
+    }
+
+    function refreshGrid_searchProduct(searchString){
+        var $gridDiv = $j('#productSearchResults');
+        $gridDiv.pqGrid('showLoading');
+
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.gcSalesOrder_Override_View.searchProduct}',
+            '{!Id}', searchString,
+            function(result,event)
+            {
+                if(event.status)
+                {
+                    gGrid.refreshGrid_callback($gridDiv,result);
+                }
+                else 
+                {
+                    alert(event.message);
+                }
+                $gridDiv.pqGrid('hideLoading');
+            },
+            {buffer:true, escape:true, timeout:120000});
+    }
+
+    function getIdObject(rowData)
+    {
+        if(rowData.idItem && rowData.idItem != null)
+            return rowData.idItem;
+        else if(rowData.idLot && rowData.idLot != null)
+            return rowData.idLot;
+        else
+            return rowData.idProduct;       
+    }
+</script>
+</apex:page>

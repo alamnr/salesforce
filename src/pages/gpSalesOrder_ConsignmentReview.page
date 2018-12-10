@@ -1,0 +1,710 @@
+<apex:page controller="gcSalesOrder_ConsignmentReview" showHeader="false" sidebar="false">
+
+<head>
+<style>
+.spinner {
+    background: rgba(0,0,0,.2);
+    background-image: url('/img/loading32.gif');
+    background-repeat: no-repeat;
+    background-attachment: fixed;	    
+    background-position: center;
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    z-index: 9998;
+}
+.modal {
+    background: rgba(0,0,0,.2);
+    background-repeat: no-repeat;
+    background-attachment: fixed;	    
+    background-position: center;
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    z-index: 100;
+}
+
+table{
+    width:100%;
+    table-layout: fixed;
+    border-collapse:collapse;
+}
+
+tr.ui-state-hover:hover td{background:#00EEFF !important;}
+tr.total td{
+	font-weight: bold;
+}
+
+#orderHeader tr th, #orderHeader tr td{
+	text-align:center !important;
+	border:1px solid gray !important;
+}
+
+.invoiceTitle {
+    font-family: sans-serif;font-size:24px;
+    text-align:center; 
+    vertical-align:top;
+}
+
+.link{
+	cursor:pointer;
+	text-decoration:underline;
+}
+
+.border1{
+    border: 1px solid #000;
+}
+
+.bordertop{
+    border-top: 1px solid #000;
+}
+
+.center{
+    text-align:center;
+}
+
+.right{
+    text-align:right;
+}
+
+.left{
+    text-align:left;
+}
+
+.top{
+    vertical-align:top;
+}
+
+.bold{
+    font-weight:bold;
+}
+
+.font1{
+    font-size:12px;
+}
+
+.bottom{
+    vertical-align:bottom;
+}
+
+.top{
+    vertical-align:top;
+}
+
+#quickFill div.pq-grid-footer{
+	display:none;
+}
+div.ui-widget-overlay{
+	background: rgba(0,0,0,1) !important;
+}
+</style>
+
+<apex:includeScript value="{!$Resource.GMBLJS__jQuery}"/>
+<apex:stylesheet value="{!URLFOR($Resource.GMBLJS__jQueryUI,'/jquery-ui/jquery-ui.min.css')}"/>
+<apex:includeScript value="{!URLFOR($Resource.GMBLJS__jQueryUI,'/jquery-ui/jquery-ui.min.js')}"/>
+<apex:includeScript value="{!$Resource.GMBLJS__accountingJS}"/>
+<apex:includeScript value="{!$Resource.GMBLJS__ExcellentExport}"/>
+<apex:stylesheet value="{!URLFOR($Resource.GMBLJS__pqGridPro,'/pqgrid.min.css')}"/>
+<apex:includeScript value="{!URLFOR($Resource.GMBLJS__pqGridPro,'/pqgrid.min.js')}"/>
+
+
+</head>
+
+<body>
+	<div id="spinner" class="spinner" style="display:none;"></div>
+	<div id="modal" class="modal" style="display:none;"></div>
+
+
+<div style="margin:0 auto; width:90%;">
+    <table style="margin-top: 10px;">
+        <tr>
+            <td class="font1" style="text-align:left; vertical-align:top;" width="28%">
+				<img src="{!$Resource.LogoConsignment}" width="450px"/>
+            </td>
+            <td width="8%"></td>
+            <td class="invoiceTitle" width="28%">
+            <span style="font-size:x-large;">Consignment Inventory Review Form</span>
+            </td>
+            <td width="8%"></td>
+            <td class="font1" style="text-align:right; vertical-align:top; padding-top:7px;"  width="28%">
+                <table>
+                	<tr style="text-align: center; vertical-align: top;">
+                       	<td class="border1 center">
+                            <b>Order #</b> <br/>
+                            <span id="orderNumber"></span>
+                        </td>
+                        <td class="border1 center">
+                            <b>Fill Date</b> <br/>
+                            <span id="fillDate"></span>
+                        </td>
+                    </tr>
+                	<tr style="text-align: center; vertical-align: top;">
+                        <td colspan="2" class="border1 center">
+                            <b>Customer</b> <br/>
+                            <span id="customerName"></span>
+                        </td>
+                    </tr>
+                	<tr style="text-align: center; vertical-align: top;">
+                        <td colspan="2" class="border1 center">
+                            <b>Sales Rep.</b> <br/>
+                            <span id="repName"></span>
+                        </td>
+                    </tr>
+                </table>
+            </td>           
+        </tr>
+    </table>
+
+    <div>
+         <table>
+            <tr class="headerLabel">
+                <td width="68%" style="font-weight:bold;">Instructions</td>
+                <td width="4%"></td>
+                <td width="20%" style="font-weight:bold;">Notes</td>
+                <td width="8%"></td>
+            </tr>
+            <tr class="headerValue">
+                <td width="55%" class="border1">
+					This shows all inventory through THIS DATE (show fill date).  If you have received inventory from Prodigy since this date, then it will not show here on this form.  If there is an issue with the count of an individual product then please note it on the related line.  If there is a more general issue then please use the notes field on top of the page.
+				</td> 
+                <td width="8%"></td>
+                <td width="20%">
+                    <textarea class = "border1" rows="3" cols="60" name="comment" onchange="alert('change')"></textarea>
+                </td>
+                <td width="8%" class="bold right bottom">
+    				<div class="bold right bottom">
+						<a download='export.xls' href='#' onclick='return fn_export($j("#quickFill"),this);$j("#exportStage").empty();'>Export XLS</a>
+					</div>            	
+                </td>
+
+            </tr>
+        </table>
+    </div>
+
+	<br/>
+
+	<div id="billMessage" style="color:red; font-weight:bold; text-align:center; display:none;">
+		This order cannot be edited, because it has already been billed.
+	</div>
+
+	<div id="periodMessage" style="color:red; font-weight:bold; text-align:center; display:none;">
+		This order cannot be edited, because the fill date is too far in the past.
+	</div>
+
+	<br/>
+
+	<div>
+		<div id="quickFill"></div>
+	</div>
+
+	<br/>
+</div>
+
+
+	<div id="exportStage" style="display:none;"></div>
+
+</body>
+
+<script>function setFocusOnLoad() {}</script>
+<script type="text/javascript">
+
+    $j = jQuery.noConflict();
+
+
+    var spinner = +0;
+
+    var idSalesOrder = '{!$CurrentPage.parameters.id}';
+
+    $j(document).ready(function()
+    {
+    	fn_initGrid_quickFill();
+    	fn_refresh();
+    });
+
+
+	accounting.settings = {
+		currency: {
+			symbol : "$",   // default currency symbol is '$'
+			format: "%s%v", // controls output: %s = symbol, %v = value/number (can be object: see below)
+			decimal : ".",  // decimal point separator
+			thousand: ",",  // thousands separator
+			precision : 2   // decimal places
+		},
+		number: {
+			precision : 0,  // default precision on numbers is 0
+			thousand: ",",
+			decimal : "."
+		}
+	}
+
+	function fn_showSpinner()
+	{
+		spinner ++;
+		if(spinner > 0)
+		$j('#spinner').show();
+	}
+	function fn_hideSpinner()
+	{
+		spinner --;
+		if(spinner <= 0)
+		{
+			$j('#spinner').hide();
+			spinner = 0;
+		}
+	}
+	function HtmlDecode(s)
+	{
+		return $j('<div>').html(s).text();
+	}
+	function fn_refreshTotal($gridDiv,pageData)
+	{
+		var totalRow = {isTotal:true, pq_rowcls:'total'};
+		var totalColumns = [];
+		$j.each($gridDiv.pqGrid('getColModel'), function(i,col)
+		{
+			if(col.gTotal)
+			{
+				totalRow[col.dataIndx] = +0;
+				totalColumns.push(col.dataIndx);
+			}
+			else
+			{
+				totalRow[col.dataIndx] = null;
+			}
+		});
+
+		//aggregate the totals
+		$j.each(pageData, function(i,row)
+		{
+			$j.each(totalColumns, function(j,dataIndx)
+			{
+				if(!isNaN(row[dataIndx]))
+					totalRow[dataIndx] += parseFloat(row[dataIndx]);
+			});
+		});
+
+		if($gridDiv.find('.pq-grid-summary').length == 0)
+			$j("<div class='pq-grid-summary'></div>").prependTo($gridDiv.find('.pq-grid-bottom'));
+		$gridDiv.pqGrid("createTable", {data:[totalRow], $cont: $gridDiv.find('div.pq-grid-summary')});		
+
+	}
+
+	function fn_refreshGrid_callback($gridDiv, listObj)
+	{
+		if(listObj.length == 0)
+		{
+			$gridDiv.pqGrid('option','dataModel', {data:[]});
+		}
+		else
+		{
+			//set the row data
+			var data = [];
+			$j.each(listObj, function(i,obj)
+			{
+				data.push(obj.mapProperty);
+			});
+			$gridDiv.pqGrid('option','dataModel', {data:data, sorting:'local', location:'local'});
+
+			//refresh the values in the filter select list
+			$j.each($gridDiv.pqGrid('getColModel'), function(i,col)
+			{
+				if(col.gFilter)
+				{
+					col.filter.cache = null;
+					col.filter.options = $gridDiv.pqGrid('getData',{dataIndx:[col.dataIndx]});					
+				}
+			});
+		}
+        $gridDiv.pqGrid('refreshDataAndView');
+        $gridDiv.pqGrid('refresh');
+	    fn_hideSpinner();		
+	}
+	function fn_initFormat(colModel)
+	{
+		$j.each(colModel, function(i,col)
+		{
+			if(col.gFormat == 'number')
+			{
+				$j.extend(col,{
+					align:'center',
+					render: function(ui)
+					{
+						var cont = eval('ui.rowData.'+ui.dataIndx);
+						if (cont != null && !isNaN(cont))
+							return accounting.formatNumber(cont);
+					}
+				});
+			}
+			else if(col.gFormat == 'money')
+			{
+				$j.extend(col,{
+					align:'right',
+					halign:'right',
+					render: function(ui)
+					{
+						var cont = eval('ui.rowData.'+ui.dataIndx);
+						if (cont && cont != null && !isNaN(cont))
+							return accounting.formatMoney(cont);
+					}
+				});
+			}
+		});
+	}
+	function fn_initFilter(colModel)
+	{
+		$j.each(colModel, function(i,col)
+		{
+			if(col.gFilter)
+			{
+				$j.extend(col,{
+		        	filter:
+		        	{
+			        	type:'select',
+			            condition: 'equal',
+			            prepend: { '': '--All--' },
+			            valueIndx: col.dataIndx,
+			            labelIndx: col.dataIndx,
+			            listeners: ['change']
+		        	}
+		    	});
+			}
+		});
+	}
+
+	function fn_refresh()
+	{
+		//get the order status
+		fn_showSpinner();
+
+		Visualforce.remoting.Manager.invokeAction(
+			'{!$RemoteAction.gcSalesOrder_ConsignmentReview.retrieveOrder}',
+			idSalesOrder,
+			function(result,event)
+			{
+				if(event.status)
+				{
+					//update some HTML controls
+					var order = result.mapProperty;
+					 $j('#customerName').html(order.customerName);
+					 $j('#fillDate').html(order.fillDate);
+					 $j('#orderNumber').html(order.orderNumber);
+					 $j('#repName').html(order.repName);
+
+					// $j('#orderHeader').find('td.customerName').html(order.customerName);
+					// $j('#orderHeader').find('td.fillDate').html(order.fillDate);
+					// $j('#orderHeader').find('td.orderNumber').html(order.orderNumber);
+					// $j('#orderHeader').find('td.repName').html(order.repName);
+
+					// if(order.orderHasBilling=='true')
+					// 	$j('#billMessage').show();
+					// else if(order.periodIsClosed=='true')
+					// 	$j('#periodMessage').show();
+
+					//update some grid options
+					var $gridDiv = $j('#quickFill');
+
+					if(order.periodIsClosed == 'false' && order.orderHasBilling == 'false')
+					{
+						$gridDiv.pqGrid('option','editable',true);
+
+						$gridDiv.pqGrid('getColumn',{dataIndx:'qtyInventory'}).hidden=false;
+						$gridDiv.pqGrid('refresh');
+					}
+					else
+					{
+						$gridDiv.pqGrid('option','editable',false);
+
+						$gridDiv.pqGrid('getColumn',{dataIndx:'qtyInventory'}).hidden=true;
+						$gridDiv.pqGrid('refresh');
+					}
+
+					//refresh the grid
+					fn_refreshGrid_quickFill();
+					fn_hideSpinner();
+				}
+				else 
+				{
+					alert(event.message); 
+					fn_hideSpinner();
+				}
+			},
+			{buffer:true, escape:true, timeout:120000}
+		);
+	}
+
+	function fn_initGrid_quickFill()
+	{
+		var gridObj = {title:"",
+						collapsible:{on:false,collapsed:false},
+						columnTemplate: {minWidth:10, sortable:true, editable:false},
+						dragColumns:{enabled:false},
+						editable:true,
+						filterModel:{on:false, mode:'AND', header:false},
+						freezeCols:0,
+						freezeRows:0,
+						height:800,
+						historyModel:{on:false},
+						hoverMode:'row',
+						hwrap:false,
+						numberCell:{show:false},
+						pageModel: {type:null},
+						pasteModel:{on:false},
+						resizable: true,
+						roundCorners: false,
+						scrollModel: {autoFit:true},
+						selectionModel: {type: null},
+						showBottom:true,
+						showHeader:true,
+						showTitle:false,
+						showTop:false,
+						showToolbar:true,
+						sortable:true,
+						swipeModel:{on:false},
+						virtualX: false,
+						virtualXHeader: false,
+						virtualY: false,
+						width:'auto',
+						wrap:false};
+
+		gridObj.colModel=[{dataIndx:"productName", 			title:"Product Name", 			align:"left", 	dataType:"string"},
+						  {dataIndx:"lotVariantQty", 		title:"Variable<br/>Units", 			align:"center", dataType:"float", gFormat:'number', minWidth:100, maxWidth:100},
+						  {dataIndx:"productCode", 			title:"NDC", 					align:"left", 	dataType:"string"},
+						  {dataIndx:"lotName", 				title:"Lot #", 					align:"left", 	dataType:"string"},
+						  {dataIndx:"lotExpirationDate", 	title:"Expiration", 			align:"center", dataType:"date"},
+						  {dataIndx:"qtyStarting", 			title:"Starting<br/>Inventory", align:"center", dataType:"float", gFormat:'number', minWidth:100, maxWidth:100},
+						  {dataIndx:"qtyInventory", 		title:"Inventory as<br/>of Fill Date<br/><span style='font-weight:bold'>(click to edit)</span>", 			
+						  																	align:"center", 	dataType:"float", gFormat:'number', minWidth:100, maxWidth:100},
+						  {dataIndx:"qtyFilled", 			title:"Consumed<br/>Inventory", 	align:"center", 	dataType:"float", gFormat:'number', minWidth:100, maxWidth:100},
+						  {dataIndx:'Notes',                title:"Notes<br/><span style='font-weight:bold'>(click to edit)</span>",
+						  																	editable:true, minWidth:250, maxWidth:100, editor:{type:'textarea', attr:'rows=4'}}];
+		fn_initFormat(gridObj.colModel);
+		//fn_initFilter(gridObj.colModel);
+
+		$j.each(gridObj.colModel, function(i,col)
+		{
+			if(col.dataIndx == 'qtyInventory')
+			{
+				$j.extend(col,{
+					render:function(ui){
+						$j(this).pqGrid('addClass',{rowIndx:ui.rowIndx, dataIndx:'qtyInventory', cls:'link'});
+						return accounting.formatNumber(ui.rowData.qtyInventory);
+					},
+
+					editable: true,
+					editor:{type:'textbox'},
+		            validations: [{ type: 'gte', value: 0, msg: "must be >= 0<br/>(escape to cancel)"}],
+		            editModel: { keyUpDown: true, filterKeys:false }
+				});
+			}
+		});
+
+		var $gridDiv = $j('#quickFill');
+
+		$gridDiv.pqGrid(gridObj);
+
+		//when cell editing begins, if there is no inventory, and no allocation, then there's nothing to do, so quit edit mode.
+		$gridDiv.on('pqgrideditorbegin', function(event,ui)
+		{
+			if(ui.dataIndx == 'qtyInventory')
+			{
+				if(parseFloat(ui.rowData.qtyInventory) != 0 || parseFloat(ui.rowData.qtyFilled) != 0)
+				{
+					//ok
+					$j(this).pqGrid('getEditCell').$cell.find('input').val(accounting.formatNumber(ui.rowData.qtyInventory));
+				}
+				else
+				{
+					$j(this).pqGrid('quitEditMode');
+				}
+			}
+		});
+
+		//if the new data is the same as the old data, then there's no reason to call the remote action, so quit edit mode.
+		$gridDiv.on('pqgridcellbeforesave', function(event,ui)
+		{
+			if(ui.dataIndx == 'qtyInventory')
+			{
+				if(parseFloat(ui.rowData.qtyInventory).toFixed(0) == parseFloat(ui.newVal).toFixed(0))
+				{
+					$j(this).pqGrid('quitEditMode');
+					return false;
+				}
+			}
+			else if(ui.dataIndx == 'Notes')
+			{
+				if(ui.rowData.Notes == ui.newVal)
+				{
+					$j(this).pqGrid('quitEditMode');
+					return false;
+				}
+			}
+		});
+
+		//save the change to inventory entered by the user
+		$gridDiv.on('pqgridcellsave', function(event,ui)
+		{
+			if(ui.dataIndx == 'qtyInventory')
+			{
+				var mapParameters = {idSalesOrder:idSalesOrder,
+									 idBalance: ui.rowData.idBalance,
+									 idProduct: ui.rowData.idProduct,
+									 idLot: ui.rowData.idLot,
+									 Quantity:ui.rowData.qtyInventory
+									 };
+
+				fn_showSpinner();
+				Visualforce.remoting.Manager.invokeAction
+				(
+					'{!$RemoteAction.gcSalesOrder_ConsignmentReview.fill}',
+					mapParameters,
+					function(result,event){
+						if(event.status) 
+						{
+							fn_refresh();
+							fn_hideSpinner();
+						}
+						else {alert(event.message); fn_hideSpinner();}
+					},
+					{buffer:true, escape:true, timeout:120000}
+				);
+			}
+		});
+	}
+
+	function fn_refreshGrid_quickFill(){
+		fn_showSpinner();
+		var $gridDiv = $j('#quickFill');
+
+		Visualforce.remoting.Manager.invokeAction(
+			'{!$RemoteAction.gcSalesOrder_ConsignmentReview.retrieveLots}',
+			idSalesOrder,
+			function(result,event)
+			{
+				if(event.status)
+				{
+					$j.each(result, function(i,row)
+					{
+						//define qtyStarting formulaically
+						var qtyInventory = row.mapProperty.qtyInventory;
+						if(isNaN(qtyInventory))
+							qtyInventory = +0;
+						else qtyInventory = parseFloat(qtyInventory);
+
+						var qtyFilled = row.mapProperty.qtyFilled;
+						if(isNaN(qtyFilled))
+							qtyFilled = +0;
+						else qtyFilled = parseFloat(qtyFilled);
+
+						row.mapProperty['qtyStarting'] = String(parseFloat(qtyInventory + qtyFilled));						
+					});
+
+					fn_refreshGrid_callback($gridDiv,result);
+				}
+				else
+				{
+					alert(event.message);
+					fn_hideSpinner();
+				}
+			},
+			{buffer:true, escape:true, timeout:120000});
+	}
+
+	function fn_export($gridDiv,aTag)
+	{
+		fn_createExportTable($gridDiv);
+		return ExcellentExport.excel(aTag, 'exportTable', 'exportWorkSheet');
+	}
+
+	function fn_createExportTable($gridDiv)
+	{
+		fn_showSpinner();
+
+		var grid = $gridDiv.pqGrid('getInstance').grid;
+		var tableData = grid.option('dataModel').data;
+		var colModel = grid.getColModel();
+
+		var $rowTemplate = $j('<tr></tr>');
+		var $header = $j('<tr></tr>');
+
+		var columns = {};
+		$j.each(colModel, function(i,col)
+		{
+			columns[col.dataIndx] = col;
+		});
+
+		//build-up the header row
+		//build-up a template detail row
+		$j.each(colModel, function(i,col)
+		{
+			var $newTD = $j('<td></td>');
+			var $newTH = $j('<th style="border:1px solid black"></th>');
+			if(!col.hidden && col.dataIndx != 'scrollSpacer')
+			{
+				$header.append($newTH.clone().addClass(col.dataIndx).html(col.title));
+				$rowTemplate.append($newTD.clone().attr('id',col.dataIndx));
+			}
+		});
+
+		//tableData.push(totalRows[0]);
+
+		//create the table
+		$j('#exportStage').html('');
+		$table = $j('<table></table>');
+		$table.attr('id','exportTable');
+
+		//add the header row
+		var customerName = $j('#orderHeader').find('td.customerName').html();
+		var fillDate = $j('#orderHeader').find('td.fillDate').html();
+		var orderNumber = $j('#orderHeader').find('td.orderNumber').html();
+
+		$table.append('<tr><td style="font-weight:bold;border:1px solid;">Customer:</td><td style="border:1px solid;" colspan="4">'+customerName+'</td></tr>');
+		$table.append('<tr><td style="font-weight:bold;border:1px solid;">Order Number:</td><td style="border:1px solid;" >#'+orderNumber+'</td></tr>');
+		$table.append('<tr><td style="font-weight:bold;border:1px solid; text-align:left;">Fill Date:</td><td style="border:1px solid;" >'+fillDate+'</td></tr>');
+		//$table.append('<tr><td style="font-size:larger; font-weight:bold;"></td><img src="{!$Resource.LogoConsignment}" width="450px"/></tr>');
+		//$table.append($j('#imageRow').html());
+		$table.append($header);
+
+		//create and add the detail rows
+		$j.each(tableData, function(i, dataRow){
+			var $newRow = $rowTemplate.clone();
+			if(dataRow.pq_rowcls && dataRow.pq_rowcls.contains('total'))
+			{
+				$newRow.css('font-weight','bold');
+			}
+
+			$j.each($newRow.find('td'),function (j, cell){
+
+				idTd = $j(cell).attr('id');
+				if(dataRow.hasOwnProperty(idTd))
+				{
+					var cont = dataRow[idTd];
+
+					if(columns[idTd].gFormat == 'number' && !isNaN(cont))
+					{
+						cont = accounting.formatNumber(cont);
+					}
+					else if(columns[idTd].gFormat == 'money' && !isNaN(cont))
+					{
+						cont = account.formatMoney(cont);
+						cont.replace('$','');
+					}
+
+					$j(cell).html(cont).addClass(idTd).removeAttr('id');
+				}
+			});
+
+			$table.append($newRow);
+		});
+
+		$j('#exportStage').append($table);
+		console.log($j('#exportStage').html());
+		fn_hideSpinner();
+	}
+
+
+</script>
+</apex:page>

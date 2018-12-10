@@ -1,0 +1,364 @@
+<apex:component controller="gcDocument_SalesOrder" access="global" layout="none">
+<apex:attribute name="attrIdSalesOrder" assignTo="{!idSalesOrder}" type="String" access="global" description="The Id of the Sales Order."/>
+
+<head>
+<style>	
+@page { 
+	size:portrait; 
+	margin-right:0.35in;
+	margin-left:0.35in;
+	margin-top:0.75in;
+	margin-bottom:0.5in;
+	border:0;
+	padding:0;
+	
+	@top-center{content: element(header);}
+	@bottom-center{content: element(footer);}
+}
+
+@page{
+	 margin-top:1.25in; /*the added margin is to accomodate the additional information that is in the running header*/
+	 margin-bottom:1.15in;
+}
+
+body{
+	margin:0 auto;
+	border:1px solid white;
+	padding:0;
+} 
+
+.runningHeader{
+	position:running(header);
+	width:100%;
+	border:1px solid white;
+	padding:0;
+	margin:0 auto;}
+
+.header{
+	border:0;
+	//margin-bottom:5px;
+}
+
+.runningFooter {
+	position: running(footer);
+	width:100%;
+	border:1px solid white;
+	padding:0;
+	margin:0 auto;
+}
+.footer {
+	font-size:11px;
+	border:0;
+}
+.headerLabel{
+	font-size:10px;
+	font-weight:bold;
+}
+.headerValue{
+	font-size:12px;
+	/* color:#404040; */
+}
+table{
+	width:100%;
+	border-collapse:collapse;
+}
+td{
+	text-align:left;
+	vertical-align:top;
+}
+*{
+	font-family: sans-serif;
+}
+firstLetter{
+	font-size:120%;
+}
+
+.pageNumber:before{
+	content:counter(page);
+}
+.pageCount:before{
+	content: counter(pages);
+}
+
+.border1{
+	border: 1px solid #000;
+}
+.center{
+	text-align:center;
+}
+.right{
+	text-align:right;
+}
+.left{
+	text-align:left;
+}
+.top{
+	vertical-align:top;
+}
+.font1{
+	font-size:11px;
+}
+.font2{
+	font-size:12px;
+}
+ol.alphaCounter {
+	list-style-type: upper-alpha;
+}
+#statement {
+	/*
+	Running footer always takes the same amount of margin below and top of it. 
+	So in this case for footer 1in bottom and top will always be empty.
+	we are positioning the desclaimer text right before footer. means bottom:0 for the page.
+	*/
+	/*position: static;
+	height: 100%;
+	width: 100%;
+	display: block;
+	vertical-align: bottom;
+	bottom: 0 !important;*/
+	margin-top: 10px;
+}
+
+</style>
+
+</head>
+
+<div class="runningHeader">
+	<div class="header">
+		<table>
+			<tr>
+				<td style="text-align:left; vertical-align:top;" width="33%">
+					<apex:image url="{!$Resource.ProdigyBWLogo}" width="237" height="78" />
+				</td>
+
+				<td style="text-align:center; vertical-align:top;" width="34%">
+					<span style="font: 32px;">Picking Slip</span>
+				</td>
+
+				<td class="font1" style="text-align:right; vertical-align:top; padding-top:7px;"  width="33%">
+					<table>
+						<tr style="text-align: center; vertical-align: top;">
+							<td class="border1 center">
+								<b>Date</b> <br/>
+								<apex:outputText value="{0, date, MMMM d','  yyyy}">
+									<apex:param value="{!order.Fill_Date__c}" /> 
+								</apex:outputText>
+							</td>
+							<td class="border1 center">
+								<b>Page</b> <br/>
+								<span class="pageNumber"/>&nbsp;of&nbsp;<span class="pageCount"/>
+							</td>
+						</tr>
+						<tr style="text-align: center; vertical-align: top;">
+							<td colspan="2" class="border1 center">
+								<b>Sales Order Number</b> <br/>
+								{!order.Name}
+							</td>
+						</tr>
+					</table>
+				</td>			
+			</tr>
+		</table>
+	</div>
+</div>
+
+<div class="runningFooter">
+	<div class="footer center">
+		<span>This wholesale distributor purchased the specific unit of the prescription drug directly from the manufacturer, unless otherwise noted on pedigree.</span><br/><br/>
+		<span>Prodigy Health Supplier Corporation&nbsp;&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;&nbsp;9417 Brodie Lane, Austin, TX 78748&nbsp;&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;&nbsp;PH: (512)693-4376&nbsp;&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;&nbsp;FAX: (512)693-4067</span>
+	</div>
+</div>
+
+<div>
+	<table>
+		<tr class="headerLabel">
+			<td width="50%">
+				DISTRIBUTED BY:
+			</td>
+			<td width="1%"></td>
+			<td width="49%"></td>
+		</tr>
+		<tr class="headerValue">
+			<td class="border1">
+				{!LEFT(order.Warehouse__r.Distributor__r.Name,75)}&nbsp;
+				<br/>
+				{!LEFT(order.Warehouse__r.Distributor__r.ShippingStreet,75)}&nbsp;
+				<br/>
+				{!LEFT(order.Warehouse__r.Distributor__r.ShippingCity,24)},&nbsp;{!LEFT(order.Warehouse__r.Distributor__r.ShippingState,24)}
+				<br/>
+				{!LEFT(order.Warehouse__r.Distributor__r.ShippingPostalCode,10)}&nbsp;
+				<br/>
+				<br/>
+				Phone: {!order.Warehouse__r.Distributor__r.Phone}
+			</td>
+			<td></td>
+			<td></td>
+		</tr>
+	</table>
+</div>
+
+<div style="margin-top:5px;">
+	<table>
+		<tr class="headerLabel">
+			<td width="50%">
+				SHIP FROM:
+			</td>
+			<td width="1%"></td>
+			<td width="49%">
+				SHIP TO:
+			</td>
+		</tr>
+		<tr class="headerValue">
+			<td class="border1">
+				{!LEFT(order.Warehouse__r.Account__r.Name,75)}&nbsp;
+				<br/>
+				{!LEFT(order.Warehouse__r.Account__r.ShippingStreet,75)}&nbsp;
+				<br/>
+				{!LEFT(order.Warehouse__r.Account__r.ShippingCity,24)},&nbsp;{!LEFT(order.Warehouse__r.Account__r.ShippingState,24)}
+				<br/>
+				{!LEFT(order.Warehouse__r.Account__r.ShippingPostalCode,10)}&nbsp;
+				<br/>
+				<br/>
+				Phone: {!order.Warehouse__r.Account__r.Phone}
+				<br/>
+				<br/>
+				<span style="font-weight:bold;">LIC: </span>{!order.Warehouse__r.Account__r.License_Number__c}
+			</td>
+			<td></td>
+			<td class="border1">
+				{!LEFT(order.AcctSeedERP__Customer__r.Name,75)}&nbsp;
+				<br/>
+				{!LEFT(order.AcctSeedERP__Customer__r.Shipping_Attention__c,75)}&nbsp;
+				<br/>
+				{!LEFT(order.AcctSeedERP__Shipping_Street__c,75)}&nbsp;
+				<br/>
+				{!LEFT(order.AcctSeedERP__Shipping_City__c,24)},&nbsp;{!LEFT(order.AcctSeedERP__Shipping_State__c,24)}			
+				<br/>
+				{!LEFT(order.AcctSeedERP__Shipping_PostalCode__c,10)}&nbsp;
+				<br/>
+				<br/>
+				Shipping Contact:
+				<br/>				
+				{!order.AcctSeedERP__Customer__r.AcctSeed__Shipping_Contact__r.Name}
+				<br/>
+				{!IF(order.AcctSeedERP__Customer__r.AcctSeed__Shipping_Contact__r.Phone != null, order.AcctSeedERP__Customer__r.AcctSeed__Shipping_Contact__r.Phone, order.AcctSeedERP__Customer__r.Phone)}
+			</td>
+		</tr>
+	</table>
+</div>
+
+<div style="margin-top:5px;">
+	<table>
+		<tr>
+			<td width="20%" class="border1 center top font1">
+				<span  class="headerLabel" style="font-weight:bold">Customer #</span><br/><span>{!order.AcctSeedERP__Customer__r.AccountNumber}</span>
+			</td>
+			<td width="20%" class="border1 center top font1">
+				<span  class="headerLabel" style="font-weight:bold">Contract #</span><br/><span></span>
+			</td>	
+			<td width="20%" class="border1 center top font1">
+				<span  class="headerLabel" style="font-weight:bold">Drop Ship Account #</span><br/><span>{!order.AcctSeedERP__Customer__r.Drop_Ship_Account_Number__c}</span>
+			</td>
+			<td width="20%" class="border1 center top font1">
+				<span  class="headerLabel" style="font-weight:bold">Customer Lic #</span><br/><span>{!order.AcctSeedERP__Customer__r.License_Number__c}</span>
+			</td>
+			<td width="20%" class="border1 center top font1">
+				<span  class="headerLabel" style="font-weight:bold">Shipper Lic #</span><br/><span>{!order.Warehouse__r.Distributor__r.License_Number__c}</span>
+			</td>	
+		</tr>
+	</table>
+</div>
+<div style="margin-top:5px;">
+	<table>
+		<tr>
+			<td width="20%" class="border1 center top font1">
+				<span  class="headerLabel" style="font-weight:bold">Order #</span><br/><span>{!order.Name}</span>
+			</td>	
+			<td width="20%" class="border1 center top font1">
+				<span  class="headerLabel" style="font-weight:bold">Purchase Order #</span><br/><span>{!order.PO_Number__c}</span>
+			</td>
+			<td width="40%" class="border1 center top font1">
+				<span  class="headerLabel" style="font-weight:bold">Ship Via</span><br/><span>{!order.Shipping_Method__c}</span>
+			</td>
+			<td width="20%" class="border1 center top font1">
+				<span  class="headerLabel" style="font-weight:bold">Terms</span><br/><span></span>
+			</td>	
+		</tr>
+	</table>
+</div>
+<div style="margin-top:5px;">
+	<table>
+		<tr class="headerLabel">
+			<td>
+				ITEMS SOLD:
+			</td>
+		</tr>
+		<tr>
+			<td width="10%" class="border1 center top font2">
+				<span  class="headerLabel" style="font-weight:bold">Qty</span>
+			</td>
+			<td width="40%" class="border1 center top font2">
+				<span  class="headerLabel" style="font-weight:bold">Product</span>
+			</td>
+			<td width="20%" class="border1 center top font2">
+				<span  class="headerLabel" style="font-weight:bold">Variant</span>
+			</td>			
+			<td width="20%" class="border1 center top font2">
+				<span  class="headerLabel" style="font-weight:bold">Lot &amp; Exp.</span>
+			</td>			
+			<td width="10%" class="border1 center top font2">
+				<span  class="headerLabel" style="font-weight:bold">Qty Shipped</span>
+			</td>
+		</tr>
+		<apex:repeat value="{!order.AcctSeedERP__Sales_Order_Line__r}" var="line">
+		<tr style="page-break-inside:avoid;">
+			<td class="border1 top center font1">
+				<apex:outputText value="{0, number,###,##0}">
+					<apex:param value="{!line.AcctSeedERP__Quantity_Ordered__c}"/>
+				</apex:outputText>
+			</td>
+			<td class="border1 top font1">
+				<span>{!line.AcctSeedERP__Product__r.Name}</span>
+				<br/>
+				<span>{!line.AcctSeedERP__Product__r.ProductCode}</span>
+				<br/>
+				<b>Storage Requirement: </b><span>{!line.AcctSeedERP__Product__r.Storage_Requirement__c}</span>
+			</td>
+			<td class="border1 top left font1">
+				<span style="display:{!IF(line.AcctSeedERP__Product__r.Variable_Price__c,'','none')}">
+					<b>units: </b><apex:outputText value="{0, number,###,##0}">
+						<apex:param value="{!line.Lot__r.Variant_Qty__c}"/>
+					</apex:outputText>
+					&nbsp;
+					{!line.AcctSeedERP__Product__r.Pricing_Units__c}
+					<br/>
+				</span>
+				<span style="display:{!IF(line.AcctSeedERP__Product__r.Variable_Price__c,'none','')}">
+					&nbsp;&nbsp; N/A &nbsp;&nbsp;
+				</span>
+			</td>
+			<td class="border1 top font1">
+				<span>{!line.Lot__r.Name}</span>
+				<br/>
+				<span><apex:outputText value="{0, date, MM/dd/yyyy}"><apex:param value="{!line.Lot__r.Expiration_Date__c}" /></apex:outputText></span>
+			</td>
+			<td class="border1 top right font1">
+				&nbsp;
+			</td>	
+		</tr>		
+		</apex:repeat>
+	</table>
+</div>
+<div id="statement" class="font1">
+Transaction statement.--The entity transferring ownership in a transaction--
+<ol class="alphaCounter">
+	<li>is authorized as required under the Drug Supply Chain Security Act</li>
+	<li>received the product from a person that is authorized as required under the Drug Supply Chain Security Act</li>
+	<li>received transaction information and a transaction statement from the prior owner of the product, as required under section 582</li>
+	<li>did not knowingly ship a suspect or illegitimate product</li>
+	<li>had systems and processes in place to comply with verification requirements under section 582</li>
+	<li>did not knowingly provide false transaction information</li>
+	<li>did not knowingly alter the transaction history</li>
+</ol>
+</div>
+</apex:component>

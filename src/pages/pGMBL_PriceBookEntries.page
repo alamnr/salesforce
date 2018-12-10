@@ -1,0 +1,764 @@
+<apex:page standardController="Product2" extensions="cGMBL_Product_Ext,cGMBL_PriceBookEntry" showHeader="true" sidebar="false" showChat="false">
+
+<head>
+<style>
+.spinner {
+    background: rgba(0,0,0,.2);
+    background-image: url('/img/loading32.gif');
+    background-repeat: no-repeat;
+    background-attachment: fixed;	    
+    background-position: center;
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    z-index: 9998;
+}
+.modal {
+    background: rgba(0,0,0,.2);
+    background-repeat: no-repeat;
+    background-attachment: fixed;	    
+    background-position: center;
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    z-index: 100;
+}
+tr.hoverBlue:hover td{background:#00EEFF !important;}
+tr.total td{
+	font-weight: bold;
+}
+.link{
+	cursor:pointer;
+	text-decoration:underline;
+	color:blue;
+}
+.cursorIsPointer{
+	cursor:pointer;
+}
+.blue{
+	color:blue;
+}
+#prices div.pq-grid-footer{
+	display:none;
+}
+</style>
+<apex:includeScript value="{!$Resource.GMBLJS__jQuery}"/>
+<apex:stylesheet value="{!URLFOR($Resource.GMBLJS__jQueryUI,'/jquery-ui/jquery-ui.min.css')}"/>
+<apex:includeScript value="{!URLFOR($Resource.GMBLJS__jQueryUI,'/jquery-ui/jquery-ui.min.js')}"/>
+<apex:includeScript value="{!$Resource.GMBLJS__accountingJS}"/>
+<apex:includeScript value="{!$Resource.GMBLJS__ExcellentExport}"/>
+<apex:stylesheet value="{!URLFOR($Resource.GMBLJS__pqGridPro,'/pqgrid.min.css')}"/>
+<apex:includeScript value="{!URLFOR($Resource.GMBLJS__pqGridPro,'/pqgrid.min.js')}"/>
+
+<script>function setFocusOnLoad() {}</script>
+<script type="text/javascript">
+
+    $j = jQuery.noConflict();
+
+    var spinner = +0;
+    var keepFilterOn = false;
+    var pbeFilters = {};
+
+    $j(document).ready(function()
+    {
+    	fn_initGrid();
+    	fn_recalcMarkup();
+    	
+    	// Does not work for dependant picklist. they are hardcoded
+    	/*$j("#searchFormDiv select").on('change',function(){
+			fn_searchProductsByFilter();
+		});*/
+
+    });
+
+
+	accounting.settings = {
+		currency: {
+			symbol : "$",   // default currency symbol is '$'
+			format: "%s%v", // controls output: %s = symbol, %v = value/number (can be object: see below)
+			decimal : ".",  // decimal point separator
+			thousand: ",",  // thousands separator
+			precision : 6   // decimal places
+		},
+		number: {
+			precision : 6,  // default precision on numbers is 0
+			thousand: ",",
+			decimal : "."
+		}
+	}
+
+	function fn_showSpinner()
+	{
+		spinner ++;
+		if(spinner > 0)
+		$j('#spinner').show();
+	}
+
+	function fn_hideSpinner()
+	{
+		spinner --;
+		if(spinner <= 0)
+		{
+			$j('#spinner').hide();
+			spinner = 0;
+		}
+	}
+
+	function HtmlDecode(s)
+	{
+		return $j('<div>').html(s).text();
+	}
+
+	function fn_refreshTotal($gridDiv,pageData)
+	{
+		var totalRow = {isTotal:true, pq_rowcls:'total'};
+		var totalColumns = [];
+		$j.each($gridDiv.pqGrid('getColModel'), function(i,col)
+		{
+			if(col.gTotal)
+			{
+				totalRow[col.dataIndx] = +0;
+				totalColumns.push(col.dataIndx);
+			}
+			else
+			{
+				totalRow[col.dataIndx] = null;
+			}
+		});
+
+		//aggregate the totals
+		$j.each(pageData, function(i,row)
+		{
+			$j.each(totalColumns, function(j,dataIndx)
+			{
+				if(!isNaN(row[dataIndx]))
+					totalRow[dataIndx] += parseFloat(row[dataIndx]);
+			});
+		});
+
+		if($gridDiv.find('.pq-grid-summary').length == 0)
+			$j("<div class='pq-grid-summary'></div>").prependTo($gridDiv.find('.pq-grid-bottom'));
+		$gridDiv.pqGrid("createTable", {data:[totalRow], $cont: $gridDiv.find('div.pq-grid-summary')});		
+	}
+
+	function fn_refreshGrid_callback($gridDiv, listObj)
+	{
+		
+		/// To Reset Any Previous Filters and cache
+		/// Otherwise filters load old data view.
+		var filterObject = [];
+		$j("#prices").pqGrid("filter", {
+                oper: 'replace',
+                data: filterObject
+        });
+        //////////////////////////////////
+        var data = [];
+        /// $gridDiv 
+		$gridDiv.pqGrid('option','dataModel.data', data);
+		$gridDiv.pqGrid("refreshDataAndView");
+
+		$j.each(listObj, function(i,obj)
+		{
+			data.push(obj.mapProperty);
+		});
+		$gridDiv.pqGrid('option','dataModel.data', data);
+		
+		//if there is new data, refresh the filter options, and refresh the data and view
+		if(listObj.length > 0)
+		{
+			$j.each($gridDiv.pqGrid('option','colModel'), function(i,col)
+			{
+				// Cleaning all data by htmldecode because we have almost all the fields in top filter.
+				$j.each($gridDiv.pqGrid('option','dataModel.data'), function(i,rowData)
+				{
+					var d = HtmlDecode(rowData[col.dataIndx]);
+					rowData[col.dataIndx] = d;
+					if(col.dataIndx == 'priceBookName')
+						pbeFilters[d] = {name:d,isMarginBasis:rowData['isMarginBasis']};
+				});
+				//if(col.filter.value != '')
+				//	prevFilters.push({ dataIndx: col.dataIndx, condition: 'equal', value: col.filter.value});
+
+				//if(!keepFilterOn)
+				//col.filter.value = '';
+				//col.filter.cache = null;
+				//col.filter.options = $gridDiv.pqGrid('getData',{dataIndx:[col.dataIndx]});
+			});
+			$gridDiv.pqGrid('refreshDataAndView');
+			$gridDiv.pqGrid('refreshView');
+		}
+		else //there's no data, so just refresh the view
+		{
+			$gridDiv.pqGrid('refreshView');
+		}
+
+		if(keepFilterOn){
+			keepFilterOn = false;
+			fn_searchProductsByFilter();
+		}
+		//console.log(pbeFilters);
+		if($j("select#priceBookName").html() == ""){
+			pbeFilters = fn_sortObj(pbeFilters);
+			$j.each(pbeFilters,function(i,v){
+				var vText = v.name;
+				if(vText.length > 40)
+				{
+					vText = vText.substring(0, 39) + '..';
+				}
+				if(v.isMarginBasis == 'true')
+					vText =  vText + '**';
+				$option = $j("<option>")
+							.attr({'value':v.name,"title":v.name})
+							.html(vText);
+				$j("select#priceBookName").append($option);
+			});
+		}
+
+/*		if(listObj.length > 0)
+		{
+			$j.each($gridDiv.pqGrid('getColModel'), function(i,col)
+			{
+				if(col.gFilter)
+				{
+					col.filter.cache = null;
+					col.filter.options = $gridDiv.pqGrid('getData',{dataIndx:[col.dataIndx]});
+				}
+			});
+
+			$gridDiv.pqGrid('refreshDataAndView');
+		}
+		$gridDiv.pqGrid('refreshView');
+*/
+		fn_hideSpinner();
+		return;	
+	}
+
+	function fn_sortObj(o)
+	{
+	    var sorted = {},
+	    key, a = [];
+
+	    for (key in o) {
+	    	if (o.hasOwnProperty(key)) {
+	    		a.push(key);
+	    	}
+	    }
+
+	    a.sort();
+
+	    for (key = 0; key < a.length; key++) {
+	    	sorted[a[key]] = o[a[key]];
+	    }
+	    return sorted;
+	}
+	function fn_initFormat(colModel)
+	{
+		$j.each(colModel, function(i,col)
+		{
+			if(col.gFormat == 'number')
+			{
+				$j.extend(col,{
+					align:'center',
+					render: function(ui)
+					{
+						var cont = eval('ui.rowData.'+ui.dataIndx);
+						if (cont != null && !isNaN(cont))
+							return accounting.formatNumber(cont);
+					}
+				});
+			}
+			else if(col.gFormat == 'money')
+			{
+				$j.extend(col,{
+					align:'right',
+					halign:'right',
+					render: function(ui)
+					{
+						var cont = eval('ui.rowData.'+ui.dataIndx);
+						if (cont && cont != null && !isNaN(cont))
+							return accounting.formatMoney(cont);
+					}
+				});
+			}
+			else if(col.gFormat == 'checkbox')
+			{
+				$j.extend(col,{
+					align:'center',
+					halign:'center',
+					render: function(ui)
+					{
+						if(ui.rowData.pq_rowcls && ui.rowData.pq_rowcls.indexOf('total') >= 0) return;
+
+						var cont = eval('ui.rowData.'+ui.dataIndx);
+						var $wrap = $j('<wrap>').append($j('<input>').attr('type','checkbox').attr('disabled','disabled'));
+						if(cont == 'true')
+						{
+							$wrap.children().first().attr('checked','checked');
+							return $wrap.html();
+						}
+						else
+						{
+							return $wrap.html();
+						}
+					}
+				});				
+			}
+		});
+	}
+
+	function fn_initFilter(colModel)
+	{
+		$j.each(colModel, function(i,col)
+		{
+			if(col.gFilter)
+			{
+				$j.extend(col,{
+		        	filter:
+		        	{
+			        	type:'select',
+			            condition: 'equal',
+			            prepend: { '': '--All--' },
+			            valueIndx: col.dataIndx,
+			            labelIndx: col.dataIndx,
+			            listeners: ['change'],
+			            value:'',
+			            cache:null,
+			            options:null
+		        	}
+		    	});
+			}
+		});
+	}
+
+
+	function fn_recalcMarkup()
+	{
+		fn_showSpinner();
+
+		Visualforce.remoting.Manager.invokeAction(
+			'{!$RemoteAction.cGMBL_PriceBookEntry.recalcMarkup}',
+			function(result,event){if(event.status){ fn_refreshGrid(); fn_hideSpinner();}else {alert(event.message); fn_hideSpinner();}});	
+	}
+
+	function fn_initGrid()
+	{
+		var gridObj = { title:"Price Book Entries&nbsp;&nbsp;<span style='font-weight:normal; font-style:italic'></span>&nbsp;&nbsp;<a download='export.xls' href='#' onclick='return fn_export($j(\"#prices\"),this);$j(\"#exportStage\").empty();'>Export XLS</a>",
+						collapsible:{on:false,collapsed:false},
+						columnTemplate: {sortable:true, editable:false, align:'center'},
+						dataModel:{data:null, sorting:'local', location:'local',cache: false},
+						dragColumns:{enabled:false},
+						editable:true,
+						filterModel:{on:true, mode:'AND', header:false, type:'local'},
+						freezeCols:0,
+						freezeRows:0,
+						height:600,
+						historyModel:{on:false},
+						hoverMode:null,
+						hwrap:false,
+						numberCell:{show:false},
+						pageModel: {type:null},
+						pasteModel:{on:false},
+						resizable: true,
+						roundCorners: false,
+						scrollModel: {autoFit:true},
+						selectionModel: {type:null},
+						showBottom:true,
+						showHeader:true,
+						showTitle:true,
+						showTop:true,
+						showToolbar:false,
+						sortable:true,
+						swipeModel:{on:false},
+						virtualX: false,
+						virtualXHeader: false,
+						virtualY: false,
+						width:'auto',
+						wrap:false};
+
+		gridObj.colModel=[{dataIndx:'priceBookName',		title:'Price Book Name', align:'left'},
+						  {dataIndx:'productFamily',		title:'Product Family', align:'left'},
+						  {dataIndx:'productCategory1',		title:'Category 1', align:'left', gFilter:true, hidden:true },
+						  {dataIndx:'productCategory2',		title:'Category 2', align:'left', gFilter:true, hidden:true },
+						  {dataIndx:'productCategory3',		title:'Category 3', align:'left', gFilter:true, hidden:true },
+						  {dataIndx:'productPlasma',		title:'HPD or R', align:'left', gFilter:true, hidden:true },
+						  {dataIndx:'productName',			title:'Product Name', align:'left'},
+						  {dataIndx:'productCode',			title:'Product Code', align:'left'},
+						  {dataIndx:'isMarginBasis',		title:'Is Margin Basis', gFormat:'checkbox', hidden:true},
+						  {dataIndx:'useStandardPrice',		title:'Use Standard Price', gFormat:'checkbox', hidden:true},
+						  {dataIndx:'margin',				title:'Margin'},
+						  {dataIndx:'unitPrice',			title:'Unit Price'},
+						  {dataIndx:'effectiveDate',		title:'Effective Date', dataType:'date'},
+						  {dataIndx:'isActive',				title:'Active', gFormat:'checkbox', hidden:true},
+						  {dataIndx:'action',				title:'Action'}];
+
+		fn_initFilter(gridObj.colModel);
+		fn_initFormat(gridObj.colModel);
+
+		/*$j.each(gridObj.colModel, function(i,col)
+		{
+			if(col.dataIndx == 'productName' || col.dataIndx == 'productCode')
+			{
+				$j.extend(col,{
+					filter: { type: 'textbox', condition: 'contain', listeners: ['keyup'] }
+				});
+			}
+		});*/
+
+
+		$j.each(gridObj.colModel, function(i,col)
+		{
+			if(col.dataIndx == 'margin')
+			{
+				$j.extend(col,{
+					render:function(ui)
+					{
+						if(ui.rowData.isMarginBasis == 'true') return;
+						else if(!ui.rowData.margin || ui.rowData.margin.length == 0) return ('<span style="cursor:pointer">...</a>');
+						var options = {
+							symbol : "%",
+							decimal : ".",
+							thousand: ",",
+							precision : 2,
+							format: "%v%s"
+						};
+						return('<a href="#">'+accounting.formatMoney(ui.rowData.margin,options)+'<a>');
+					},
+					editable: true,
+		            editor: { select: true },
+		            editModel: {clicksToEdit:1, pressToEdit:false, filterKeys:true, keyUpDown:false, saveKey:$j.ui.keyCode.ENTER}
+				});				
+			}
+
+			if(col.dataIndx == 'productName')
+			{
+				$j.extend(col,{
+					render:function(ui)
+					{
+						var $myObj = $j('<a>').html(ui.rowData.productName).attr('href','/'+ui.rowData.idProduct).attr('target','_blank');
+						return $j('<wrap>').append($myObj).html();
+					}
+				});
+			}
+
+			if(col.dataIndx == 'unitPrice')
+			{
+				$j.extend(col,{
+					render:function(ui)
+					{
+						return('<a href="#">'+accounting.formatMoney(ui.rowData.unitPrice)+'<a>');
+					},
+					editable: true,
+		            editor: { select: true },
+		            validations: [{ type: 'gte', value: 0, msg: "must be >= 0"}],
+		            editModel: {clicksToEdit:1, pressToEdit:false, filterKeys:true, keyUpDown:false, saveKey:$j.ui.keyCode.ENTER}
+				});				
+			}
+
+			else if (col.dataIndx == 'action')
+			{
+				$j.extend(col,{
+					render:function(ui)
+					{
+						var myButton1 = '<button type=\"button\" style="font-size:smaller;" onclick=\"window.open(\'/'+ui.rowData.idPBE+'\',\'_blank\');\">View Entry</button>';
+						var myButton2 = '<button type=\"button\" style="font-size:smaller;" onclick=\"window.open(\'/ui/pricebook/SelectSearch?addTo='+ui.rowData.idProduct+'\',\'_blank\');\">New Entry</button>';
+
+						return myButton1 + '&nbsp;&nbsp;' + myButton2;
+					}
+				});
+			}
+
+		});
+
+		var $gridDiv = $j('#prices');
+
+		$gridDiv.pqGrid(gridObj);
+
+		$gridDiv.on('pqgrideditorbegin', function(event,ui)
+		{
+			if(ui.dataIndx == 'margin' && ui.rowData.isMarginBasis == 'true')
+			{
+				$j(this).pqGrid( "quitEditMode" );
+			}
+		});
+
+		$gridDiv.on('pqgridcellsave', function(event,ui)
+		{
+			if(ui.dataIndx == 'unitPrice')
+			{
+				if(!ui.rowData.unitPrice || isNaN(ui.rowData.unitPrice)) ui.rowData.unitPrice = 0;
+				fn_showSpinner();
+				Visualforce.remoting.Manager.invokeAction(
+					'{!$RemoteAction.cGMBL_Product_Ext.updateUnitPrice}',
+					ui.rowData.idPBE, ui.rowData.unitPrice,
+					function(result,event){
+						if(event.status)
+						{
+							//ui.rowData.unitPrice = result;
+							//$j("#prices").pqGrid( "refreshRow", { rowIndx: ui.rowIndx} );
+							fn_hideSpinner();
+							//fn_refreshGridKeepFilters();
+							keepFilterOn = true;
+							fn_recalcMarkup();
+						}
+						else 
+						{
+							alert(event.message); 
+							fn_hideSpinner();
+						}
+					});				
+			}
+			else if(ui.dataIndx == 'margin')
+			{
+				if(!ui.rowData.margin || ui.rowData.margin == '' || isNaN(ui.rowData.margin)) ui.rowData.margin = null;
+				fn_showSpinner();
+				Visualforce.remoting.Manager.invokeAction(
+					'{!$RemoteAction.cGMBL_Product_Ext.updateMargin}',
+					ui.rowData.idPBE, ui.rowData.margin,
+					function(result,event){
+						if(event.status){
+							var res = new Array();
+							res = result.split('__');
+							ui.rowData.margin = res[0];
+							ui.rowData.unitPrice = res[1];
+							$j("#prices").pqGrid( "refreshRow", { rowIndx: ui.rowIndx} );
+							fn_hideSpinner();
+							//fn_recalcMarkup();
+						}
+						else 
+						{
+							alert(event.message); 
+							fn_hideSpinner();
+						}
+					});				
+			}
+		});
+
+/*		$gridDiv.on('pqgridbeforetableview', function(event, ui)
+		{
+	        $j("#prices").pqGrid("hideLoading");
+		});
+*/
+	}
+
+	function fn_refreshGrid()
+	{
+		fn_showSpinner();
+		var $gridDiv = $j('#prices');
+
+		Visualforce.remoting.Manager.invokeAction(
+			'{!$RemoteAction.cGMBL_Product_Ext.retrievePricesAll}',
+			function(result,event){if(event.status) fn_refreshGrid_callback($gridDiv,result);else {alert(event.message); fn_hideSpinner();}},
+			{buffer:true, escape:true, timeout:120000});	
+	}
+
+	function fn_export($gridDiv,aTag)
+	{
+		fn_createExportTable($gridDiv);
+		return ExcellentExport.excel(aTag, 'exportTable', 'exportWorkSheet');
+	}
+
+	function fn_createExportTable($gridDiv)
+	{
+		fn_showSpinner();
+
+		var grid = $gridDiv.pqGrid('getInstance').grid;
+		var tableData = grid.option('dataModel').data;
+		var colModel = grid.getColModel();
+
+		var $rowTemplate = $j('<tr></tr>');
+		var $header = $j('<tr></tr>');
+
+		//build-up the header row
+		//build-up a template detail row
+		$j.each(colModel, function(i,col)
+		{
+			var $newTD = $j('<td></td>');
+			var $newTH = $j('<th style="border:1px solid black"></th>');
+			if(!col.hidden && col.dataIndx != 'scrollSpacer')
+			{
+				$header.append($newTH.clone().addClass(col.dataIndx).html(col.title));
+				$rowTemplate.append($newTD.clone().attr('id',col.dataIndx));
+			}
+		});
+
+		//tableData.push(totalRows[0]);
+
+		//create the table
+		$j('#exportStage').html('');
+		$table = $j('<table></table>');
+		$table.attr('id','exportTable');
+
+		//add the header row
+		//$table.append('<tr><td style="font-size:larger; font-weight:bold;"></td>This is the title.</tr>');
+		$table.append($header);
+
+		//create and add the detail rows
+		$j.each(tableData, function(i, dataRow){
+			var $newRow = $rowTemplate.clone();
+			if(dataRow.pq_rowcls && dataRow.pq_rowcls.contains('total'))
+			{
+				$newRow.css('font-weight','bold');
+			}
+
+			$j.each($newRow.find('td'),function (j, cell){
+				idTd = $j(cell).attr('id');
+				if(dataRow.hasOwnProperty(idTd))
+				{
+					var cont = dataRow[idTd];
+					if(!isNaN(cont))
+					{
+						cont = accounting.formatNumber(cont);
+					} 
+					$j(cell).html(cont).addClass(idTd).removeAttr('id');
+				}
+			});
+
+			$table.append($newRow);
+		});
+
+		$j('#exportStage').append($table);
+
+		fn_hideSpinner();
+	}
+
+	function fn_searchProductsByFilter(){
+		//$j("#prices").pqGrid("showLoading");
+		var searchProductFamily = $j("#searchFormDiv select:nth(0)").val();
+		var searchProductCat1 = $j("#searchFormDiv select:nth(1)").val();
+		var searchProductCat2 = $j("#searchFormDiv select:nth(2)").val();
+		var searchProductCat3 = $j("#searchFormDiv select:nth(3)").val();
+		var searchProductPlasma = $j("#searchFormDiv select:nth(4)").val();
+		var searchProductName = $j("#searchFormDiv input[type=text]:nth(0)").val();
+		var searchProductCode = $j("#searchFormDiv input[type=text]:nth(1)").val();
+
+		var pbn = $j("#searchFormDiv select#priceBookName").val();
+
+		if($j("#searchFormDiv select:nth(1)").is(":disabled"))
+			searchProductCat1 = "";
+		if($j("#searchFormDiv select:nth(2)").is(":disabled"))
+			searchProductCat2 = "";
+		if($j("#searchFormDiv select:nth(3)").is(":disabled"))
+			searchProductCat3 = "";
+
+		var filterModel = $j("#prices").pqGrid( "option", "filterModel");
+
+		var filterObject = [];
+		filterObject.push({ dataIndx: 'productFamily', condition: 'equal', value: searchProductFamily});
+		filterObject.push({ dataIndx: 'productCategory1', condition: 'equal', value: searchProductCat1});
+		filterObject.push({ dataIndx: 'productCategory2', condition: 'equal', value: searchProductCat2});
+		filterObject.push({ dataIndx: 'productCategory3', condition: 'equal', value: searchProductCat3});
+		filterObject.push({ dataIndx: 'productPlasma', condition: 'equal', value: searchProductPlasma});
+		filterObject.push({ dataIndx: 'productName', condition: 'contain', value: searchProductName});
+		filterObject.push({ dataIndx: 'productCode', condition: 'contain', value: searchProductCode});
+		filterObject.push({ dataIndx: 'priceBookName', condition: 'range', value: pbn});
+
+/*		console.log(prevFilters);
+		var op ='add';
+		if(prevFilters.length){
+			filterObject = filterObject.concat(prevFilters);
+			console.log(1);
+			prevFilters = [];
+			op = 'replace';
+		}
+*/
+		$j("#prices").pqGrid("filter", {
+				cache: null,
+                data: filterObject
+        });
+	}
+
+	function fn_resetSearchForm(){
+		window.location.reload();
+		/*document.getElementById('{!$Component.searchForm}').reset();
+		var filterObject = [];
+		$j("#prices").pqGrid("filter", {
+                oper: 'replace',
+                data: filterObject
+        });*/
+	}
+</script>
+</head>
+
+	<div id="spinner" class="spinner" style="display:none;"></div>
+	<div id="modal" class="modal" style="display:none;"></div>	
+	<div style="margin:0 auto; width:90%">
+		<div style="text-align:center;">
+			<span style="font-size:large;">Price Editor</span>
+		</div>
+		
+		<apex:form id="searchForm">
+ 	        <apex:pageBlock mode="read" title="Advanced Filter">
+				<div id="searchFormDiv">
+					<table width="80%" cellspacing="5">
+						<tr>
+							<td colspan="6">
+								<apex:commandButton value=" Reset Form " onclick="fn_resetSearchForm();return false;"></apex:commandButton>
+							</td>
+						</tr>
+						<tr>
+							<th>
+								<apex:outputLabel >Product Family</apex:outputLabel>
+							</th>
+							<th>
+								<apex:outputLabel >Category 1</apex:outputLabel>
+							</th>
+							<th>
+								<apex:outputLabel >Category 2</apex:outputLabel>
+							</th>
+							<th>
+								<apex:outputLabel >Category 3</apex:outputLabel>
+							</th>
+							<th>
+								<apex:outputLabel >{!$ObjectType.product2.fields.Human_Plasma_Derived_or_Recombinant__c.Label}</apex:outputLabel>
+							</th>
+           					<th>
+								<apex:outputLabel >Price Book Name</apex:outputLabel>
+							</th>
+						</tr>
+						<tr>
+							<td>
+           						<apex:inputField onchange="fn_searchProductsByFilter();" id="searchProductFamily" value="{!product2.Family}"></apex:inputField>
+           					</td>
+           					<td>
+           						<apex:inputField onchange="fn_searchProductsByFilter();" id="searchProductCat1" value="{!product2.Category_1__c}"></apex:inputField>
+           					</td>
+           					<td>
+           						<apex:inputField onchange="fn_searchProductsByFilter();" id="searchProductCat2" value="{!product2.Category_2__c}"></apex:inputField>
+           					</td>
+           					<td>
+           						<apex:inputField onchange="fn_searchProductsByFilter();" id="searchProductCat3" value="{!product2.Category_3__c}"></apex:inputField>
+           					</td>
+           					<td>
+	            				<apex:inputField onchange="fn_searchProductsByFilter();" id="searchProductPlasma" value="{!product2.Human_Plasma_Derived_or_Recombinant__c}"></apex:inputField>
+	            			</td>
+							<td rowspan="3"><select style="height:100px;" onchange="fn_searchProductsByFilter();" multiple="multiple" name="priceBookName" id="priceBookName"></select></td>
+           				</tr>
+           				<tr>
+							<th>
+								<apex:outputLabel >Product Name</apex:outputLabel>
+							</th>
+							<th>
+								<apex:outputLabel >Product Code</apex:outputLabel>
+							</th>
+							<th colspan="3">&nbsp;</th>
+           				</tr>
+           				<tr>
+           					<td><apex:inputText onkeyup="fn_searchProductsByFilter();" id="productName"></apex:inputText></td>
+           					<td><apex:inputText onkeyup="fn_searchProductsByFilter();" id="productCode"></apex:inputText></td>
+           					<td colspan="3"></td>
+           				</tr>
+	            	</table>
+				</div>
+ 	        </apex:pageBlock>
+	    </apex:form>
+		<apex:form >
+			<div><div id="prices"></div></div>
+		</apex:form>
+
+	</div>
+	<div id="exportStage" style="display:none;"></div>
+</apex:page>

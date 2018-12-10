@@ -1,0 +1,13 @@
+<apex:component layout="none" access="global">
+
+	<c:gcmpDocument_Billing attrIdBilling="{!$CurrentPage.parameters.idParent}"	rendered="{!IF($CurrentPage.parameters.component == 'Billing', true, false)}"/>
+
+	<c:gcmpDocument_InventtoryTransfer attrIdInventoryTransfer="{!$CurrentPage.parameters.idParent}" rendered="{!IF($CurrentPage.parameters.component == 'InventoryTransfer', true, false)}"/>
+
+	<c:gcmpDocument_SalesOrder attrIdSalesOrder="{!$CurrentPage.parameters.idParent}" rendered="{!IF($CurrentPage.parameters.component == 'SalesOrder', true, false)}"/>
+
+	<c:gcmpDocument_PurchaseOrderLocation attrIdPurchaseOrder="{!$CurrentPage.parameters.idParent}" rendered="{!IF($CurrentPage.parameters.component == 'PurchaseOrder', true, false)}"/>
+	
+	<c:gcmpDocument_USCIssues attrUSCIssueList="{!$CurrentPage.parameters.idParent}" rendered="{!IF($CurrentPage.parameters.component == 'USCOverride', true, false)}"/>
+
+</apex:component>

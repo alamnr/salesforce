@@ -1,0 +1,1085 @@
+<apex:page standardController="AcctSeedERP__Purchase_Order__c" extensions="cGMBL_PurchaseOrder_Ext,cGMBL_Common">
+<head>
+<style>
+table{
+    width:100%;
+    border-collapse:collapse;
+}
+table.innerTable td{
+    border:0;
+}
+#innerTable td{
+    border:0;
+}
+tr.hoverBlue:hover td{background:#00EEFF;}
+td.number{
+    text-align:right;
+}
+.link{
+    cursor:pointer;
+    text-decoration:underline;
+}
+.spinner {
+    background: rgba(0,0,0,.2);
+    background-image: url('/img/loading32.gif');
+    background-repeat: no-repeat;
+    background-attachment: fixed;       
+    background-position: center;
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    z-index: 9998;
+}
+.modal {
+    background: rgba(0,0,0,.2);
+    background-repeat: no-repeat;
+    background-attachment: fixed;       
+    background-position: center;
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    z-index: 100;
+}
+</style>
+<apex:includeScript value="{!$Resource.GMBLJS__jQuery}"/>
+<apex:stylesheet value="{!URLFOR($Resource.GMBLJS__jQueryUI,'/jquery-ui/jquery-ui.min.css')}"/>
+<apex:includeScript value="{!URLFOR($Resource.GMBLJS__jQueryUI,'/jquery-ui/jquery-ui.min.js')}"/>
+<apex:includeScript value="{!$Resource.GMBLJS__accountingJS}"/>
+<apex:includeScript value="{!$Resource.GMBLJS__ExcellentExport}"/>
+<apex:stylesheet value="{!URLFOR($Resource.GMBLJS__pqGridPro,'/pqgrid.min.css')}"/>
+<apex:includeScript value="{!URLFOR($Resource.GMBLJS__pqGridPro,'/pqgrid.min.js')}"/>
+<script type="text/javascript">
+accounting.settings = {
+    currency: {
+        symbol : "$",   // default currency symbol is '$'
+        format: "%s%v", // controls output: %s = symbol, %v = value/number (can be object: see below)
+        decimal : ".",  // decimal point separator
+        thousand: ",",  // thousands separator
+        precision : 2   // decimal places
+    },
+    number: {
+        precision : 0,  // default precision on numbers is 0
+        thousand: ",",
+        decimal : "."
+    }
+}
+</script>
+<script type="text/javascript">
+    
+    $j = jQuery.noConflict();
+
+    $j(document).ready(function()
+    {
+        fn_refreshDetailRows();
+    });     
+    
+    var spinner = parseInt('0'); //a counter, that keeps track of when the spinner should be shown and hidden.
+
+/*****/
+//FUNCTIONALITY FOR REFRESHING PURCHASE ORDER LINES
+/*****/ 
+    function fn_refreshDetailRows()
+    {
+        fn_showSpinner();
+        var idPurchaseOrder = $j('#idPurchaseOrder').val();
+        var tableBody = $j('#tbl_detailRows tbody').first();
+        
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.cGMBL_PurchaseOrder_Ext.refreshDetailRows}',
+            idPurchaseOrder,
+            function(result,event){if(event.status) fn_refreshDetailRows_callback(result);else {alert(event.message); fn_hideSpinner();}}); 
+    }
+    
+    function fn_refreshDetailRows_callback(listPurchaseOrderLine)
+    {
+        var table = $j('#tbl_detailRows').first();
+        $j(table).find('tbody').remove();
+        
+        var templateBody = $j('#template').find('#idLine').clone();
+        
+        $j.each(listPurchaseOrderLine,function()
+        {
+            $j(table).append($j(templateBody).clone().attr('id',this.Id));
+            fn_updateLine(this);
+        });
+        fn_rerenderDetail();
+        fn_hideSpinner();
+    }
+
+    function fn_refreshDetailRow(idLine)
+    {
+        fn_showSpinner();
+        
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.cGMBL_PurchaseOrder_Ext.refreshDetailRow}',
+            idLine,
+            function(result,event){if(event.status) fn_refreshDetailRow_callback(result);else {alert(event.message); fn_hideSpinner();}});      
+    }
+    
+    function fn_refreshDetailRow_callback(purchaseOrderLine)
+    {
+        fn_updateLine(purchaseOrderLine);   
+        fn_rerenderDetail();
+        fn_hideSpinner();
+    }
+
+    function fn_updateLine(purchaseOrderLine)
+    {
+        var line = purchaseOrderLine;
+        var row = $j('#'+line.Id).find('tr.line');
+
+        $j(row).find('a.lineNumber').html(parseFloat(line.Name.replace(/[^0-9]/g,'')).toString()).attr('href','/'+line.Id);
+
+        //buttons
+        $j(row).find('input.btn_deleteLine').prop('disabled',false);
+        $j(row).find('input.btn_editLot').prop('disabled',false);
+        $j(row).find('input.btn_selectLot').prop('disabled',false);
+
+        //product
+        if(line.AcctSeedERP__Product__c)
+        {
+            //product name
+            $j(row).find('a.productName').html(line.AcctSeedERP__Product__r.Name).attr('href','/'+line.AcctSeedERP__Product__c);
+            
+            //product code
+            if(line.AcctSeedERP__Product__r.ProductCode)
+                $j(row).find('span.productCode').html(line.AcctSeedERP__Product__r.ProductCode);
+            else
+                $j(row).find('span.productCode').html('');  
+            
+            //idProduct
+            $j(row).find('input.idProduct').val(line.AcctSeedERP__Product__c);
+
+            //has variable price
+            if(line.AcctSeedERP__Product__r.Variable_Price__c)
+                $j(row).find('input.hasVariablePrice').prop('checked',true);
+            else
+                $j(row).find('input.hasVariablePrice').prop('checked',false);
+
+            //pricing units
+            if(line.AcctSeedERP__Product__r.Pricing_Units__c)
+                $j(row).find('span.pricingUnits').html(line.AcctSeedERP__Product__r.Pricing_Units__c);
+            else
+                $j(row).find('span.pricingUnits').html('');
+        }
+        else
+        {
+            $j(row).find('input.btn_editLot').prop('disabled',true);
+            $j(row).find('input.btn_selectLot').prop('disabled',true);
+        }
+
+        //lot
+        if(line.Lot__c)
+        {
+            //lot name
+            $j(row).find('a.lotName').html(line.Lot__r.Name).attr('href','/'+line.Lot__c);
+
+            //idLot
+            $j(row).find('input.idLot').val(line.Lot__c);
+
+            //lot expiration date
+            try
+            {           
+            var thisDate = new Date(line.Lot__r.Expiration_Date__c);
+            var convertedDate = new Date(thisDate.getUTCFullYear(),thisDate.getUTCMonth(),thisDate.getUTCDate());
+            $j(row).find('span.expirationDate').html(convertedDate.toLocaleString().split(',')[0]);                                 
+            }
+            catch(err){}
+
+            //lot variant quantity
+            if(!isNaN(line.Lot__r.Variant_Qty__c))
+                $j(row).find('span.lotVariantQty').html(line.Lot__r.Variant_Qty__c.toFixed(0));
+            else if(line.AcctSeedERP__Product__r.Variable_Price__c)
+                $j(row).find('span.lotVariantQty').html('0');
+            else
+                $j(row).find('span.lotVariantQty').html('');
+        }
+        else
+        {
+            //lot name
+            $j(row).find('a.lotName').html('').attr('href','#');
+
+            //idLot
+            $j(row).find('input.idLot').val(line.Lot__c);
+
+            //lot expiration date
+            $j(row).find('span.expirationDate').html('');                                   
+
+            //lot variant quantity
+            $j(row).find('span.lotVariantQty').html('');
+
+            //edit lot button
+            $j(row).find('input.btn_editLot').prop('disabled',true);
+
+            $j(row).find('input.btn_editLot').prop('disabled',true);
+        }
+
+        //price override
+        if(line.Price_Override__c)
+            $j(row).find('input.priceOverride').prop('checked',true);
+        else
+            $j(row).find('input.priceOverride').prop('checked',false);  
+
+        //variant unit price
+        if(line.Variant_Unit_Price__c && !isNaN(line.Variant_Unit_Price__c))
+            $j(row).find('span.variantUnitPrice').html(accounting.formatMoney(line.Variant_Unit_Price__c,'$',6));
+        else if(line.AcctSeedERP__Product__r.Variable_Price__c)
+            $j(row).find('span.variantUnitPrice').html(accounting.formatMoney('0'));
+        else
+            $j(row).find('span.variantUnitPrice').html('');         
+
+        //line unit price
+        if(!isNaN(line.AcctSeedERP__Unit_Price__c))
+            $j(row).find('span.unitPrice').html(accounting.formatMoney(line.AcctSeedERP__Unit_Price__c));
+        else
+            $j(row).find('span.unitPrice').html(accounting.formatMoney('0'));
+
+        //line quantity
+        if(!isNaN(line.AcctSeedERP__Quantity__c))
+            $j(row).find('span.qty').html(line.AcctSeedERP__Quantity__c.toFixed(0));
+        else
+            $j(row).find('span.qty').html('0');
+
+        //line total        
+        if(!isNaN(line.AcctSeedERP__Total__c))
+            $j(row).find('span.total').html(accounting.formatMoney(line.AcctSeedERP__Total__c));
+        else
+            $j(row).find('span.total').html(accounting.formatMoney('0'));
+
+        //line quantity received
+        if(!isNaN(line.AcctSeedERP__Quantity_Received__c))
+            $j(row).find('span.qtyReceived').html(line.AcctSeedERP__Quantity_Received__c.toFixed(0));
+        else
+            $j(row).find('span.qtyReceived').html('0');
+
+        //line total received
+        if(!isNaN(line.Total_Received__c))
+            $j(row).find('span.totalReceived').html(accounting.formatMoney(line.Total_Received__c));
+        else
+            $j(row).find('span.totalReceived').html(accounting.formatMoney('0'));           
+
+        if(line.AcctSeedERP__Purchase_Order_Inventory_Movements__r || line.AcctSeedERP__Account_Payable_Lines__r)
+        {
+            $j(row).find('input.btn_deleteLine').prop('disabled',true);
+            $j(row).find('input.btn_editLot').prop('disabled',true);
+            $j(row).find('input.btn_selectLot').prop('disabled',true);
+        }
+    }
+
+/*****/
+//FUNCTIONALITY FOR DELETING A PURCHASE ORDER LINE
+/*****/
+    function fn_deleteLine(idLine)
+    {
+        fn_showSpinner();
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.cGMBL_Common.deleteRecord}',
+            idLine,
+            function(result,event){if(event.status) fn_deleteLine_callback(idLine);else {alert(event.message); fn_hideSpinner();}});            
+    }
+    
+    function fn_deleteLine_callback(idLine)
+    {
+        $j('#'+idLine).remove();
+        fn_rerenderDetail();
+        fn_hideSpinner();
+    }
+
+/*****/
+//FUNCTIONALITY FOR UPDATING THE QUANTITY AND/OR PRICE OF A PURCHASE ORDER LINE
+/*****/
+    function fn_launchEditPriceAndQuantity(idLine)
+    {
+        var popUp = $j('#template').find('div.popUp_priceAndQuantity').first().clone();
+        $j('#'+idLine).find('div.qty').append(popUp);
+        
+        $j('#modal').show();
+        
+        var pricingUnits = $j('#'+idLine).find('tr.line span.pricingUnits').html();
+        $j(popUp).find('span.pricingUnits').html(pricingUnits);
+        
+        if($j('#'+idLine).find('tr.line input.hasVariablePrice').prop('checked'))
+        //if(pricingUnits == 'IU')
+            $j(popUp).find('input.price').val(accounting.unformat($j('#'+idLine).find('tr.line span.variantUnitPrice').html()));
+        else
+            $j(popUp).find('input.price').val(accounting.unformat($j('#'+idLine).find('tr.line span.unitPrice').html()));
+        
+        $j(popUp).find('input.qty').val($j('#'+idLine).find('tr.line span.qty').html());
+        $j(popUp).find('input.priceOverride').prop('checked',$j('#'+idLine).find('tr.line input.priceOverride').prop('checked'));   
+        
+        fn_priceEnableSync(idLine); 
+    }   
+
+    function fn_priceEnableSync(idLine)
+    {
+        var popUp = $j('#'+idLine).find('div.popUp_priceAndQuantity');
+        var priceOverride = $j(popUp).find('input.priceOverride').prop('checked');
+        $j(popUp).find('input.price').prop('disabled',!priceOverride);
+    }
+
+    function fn_cancelPriceAndQuantity(idLine)
+    {
+        $j('#'+idLine).find('div.popUp_priceAndQuantity').remove();
+        $j('#modal').hide();
+    }
+    
+    function fn_updatePriceAndQuantity(idLine)
+    {
+        var popUp = $j('#'+idLine).find('div.popUp_priceAndQuantity');
+        var priceOverride = $j(popUp).find('input.priceOverride').prop('checked');
+        var price = $j(popUp).find('input.price').val();
+        var qty = $j(popUp).find('input.qty').val();
+
+        if(!qty || isNaN(qty)) 
+        {
+            alert('A Quantity is required.');
+            return;
+        }
+        if(priceOverride && (!price || isNaN(price)))
+        {
+            alert('A Price is required.');
+            return;
+        }
+
+        if(!price || isNaN(price))
+            price = 0;
+
+        fn_showSpinner();
+        
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.cGMBL_PurchaseOrder_Ext.updatePriceAndQuantity}',
+            idLine, price, qty, priceOverride,
+            function(result,event){if(event.status) fn_updatePriceAndQuantity_callback(result);else {alert(event.message); fn_hideSpinner();}});
+    }
+    
+    function fn_updatePriceAndQuantity_callback(purchaseOrderLine)
+    {
+        fn_updateLine(purchaseOrderLine);
+        $j('#'+purchaseOrderLine.Id).find('div.popUp_priceAndQuantity').remove();
+        $j('#modal').hide();
+        fn_hideSpinner();
+    }
+
+/*****/
+//FUNCTIONALITY FOR UPDATING THE LOT OF A PURCHASE ORDER LINE, INCLUDING CREATING A NEW LOT
+/*****/
+    function fn_launchSelectLot(idLine)
+    {
+        var popUp = $j('#template').find('div.popUp_selectLot').first().clone();
+        $j(popUp).find('input.expirationDate').datepicker();
+        $j(popUp).find('tbody tr').remove();
+        $j('#'+idLine).find('div.lot').append(popUp);
+        
+        $j('#modal').show();
+        
+        if($j('#'+idLine).find('input.hasVariablePrice').prop('checked') == false)
+            $j(popUp).find('input.lotVariantQty, span.lotVariantQty, span.variantHeader').hide();   
+        
+        $j(popUp).find('input.lotName').val('%');
+        fn_searchLot(idLine, 5);
+        $j(popUp).find('input.lotName').val('');
+    }
+    
+    function fn_cancelSelectLot(idLine)
+    {
+        $j('#'+idLine).find('div.popUp_selectLot').remove();
+        $j('#modal').hide();
+    }
+
+    function fn_searchLot(idLine, resultCount)
+    {       
+        var idProduct = $j('#'+idLine).find('input.idProduct').val();
+        var searchString = $j('#'+idLine).find('input.lotName').val();
+        
+        if(isNaN(resultCount)) resultCount = 5;
+        
+        if(searchString.length < 1) return;
+        
+        fn_showSpinner();
+        
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.cGMBL_PurchaseOrder_Ext.searchLot}',
+            searchString, idProduct, resultCount,
+            function(result,event){if(event.status) fn_searchLot_callback(result,idLine);else alert(event.message);});      
+    }
+
+    function fn_searchLot_callback(listLot,idLine)
+    {
+        var tbody = $j('#'+idLine).find('div.popUp_selectLot tbody').first();
+        $j(tbody).html('');
+        var templateRow = $j('#template').find('div.popUp_selectLot tbody tr').first().clone();
+        
+        $j.each(listLot,function()
+        {
+            var lot = this;
+            var newRow = $j(templateRow).clone();
+            $j(newRow).find('span.lotName').html(lot.Name);
+            $j(newRow).find('input.idLot').val(lot.Id);
+
+            try
+            {
+                var thisDate = new Date(lot.Expiration_Date__c);
+                var convertedDate = new Date(thisDate.getUTCFullYear(),thisDate.getUTCMonth(),thisDate.getUTCDate());
+                $j(newRow).find('span.expirationDate').html(convertedDate.toLocaleString().split(',')[0]);                                  
+            }
+            catch(err){}
+
+            if(lot.Variant_Qty__c && !isNaN(lot.Variant_Qty__c))
+                $j(newRow).find('span.lotVariantQty').html(lot.Variant_Qty__c.toFixed(0));
+            
+            $j(tbody).append(newRow);
+        });
+
+        fn_hideSpinner();
+    }
+
+    function fn_selectLot(idLine,idLot)
+    {
+        fn_showSpinner();
+        
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.cGMBL_PurchaseOrder_Ext.selectLot}',
+            idLine,idLot,
+            function(result,event){if(event.status) fn_selectLot_callback(result);else {alert(event.message); fn_hideSpinner()}});      
+    }
+
+    function fn_selectLot_callback(purchaseOrderLine)
+    {
+        $j('#'+purchaseOrderLine.Id).find('div.popUp_selectLot').remove();
+        $j('#modal').hide();
+        fn_updateLine(purchaseOrderLine);   
+        fn_hideSpinner();
+    }
+
+    function fn_createLot(idLine)
+    {
+        var idProduct = $j('#'+idLine).find('input.idProduct').val();
+        var lotName = $j('#'+idLine).find('input.lotName').val();
+        var dateExpiration = $j('#'+idLine).find('input.expirationDate').val();
+        var strVariantQty = $j('#'+idLine).find('input.lotVariantQty').val();
+        if(!strVariantQty || isNaN(strVariantQty)) strVariantQty = 0;
+
+        fn_showSpinner();
+
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.cGMBL_PurchaseOrder_Ext.createLot}',
+            lotName,idProduct,dateExpiration,strVariantQty,
+            function(result,event){if(event.status) fn_createLot_callback(result,idLine);else {alert(event.message); fn_hideSpinner()}});                       
+    }
+    function fn_createLot_callback(lot,idLine)
+    {
+        fn_selectLot(idLine,lot.Id);
+        fn_hideSpinner();
+    }
+
+/*****/
+//FUNCTIONALITY FOR CREATING, UPDATING, AND DELETING PURCHASE ORDER INVENTORY MOVEMENTS
+/*****/
+
+    function fn_showReceiving(idLine)
+    {
+        $j('#'+idLine).find('tr.move').remove();
+        $j('#'+idLine).append($j('#template').find('tr.move.header').clone());  
+        $j('#'+idLine).append($j('#template').find('tr.move.new').clone());
+    
+        $j('#'+idLine).find('input.btn_saveMove').show();
+        
+        fn_refreshWrapMoves(idLine);
+    }
+    
+    function fn_hideReceiving(idLine)
+    {
+        $j('#'+idLine).find('tr.move').remove();
+    }
+
+    function fn_refreshWrapMoves(idLine)
+    {
+        fn_showSpinner();
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.cGMBL_Common.retrieveWrapMoves}',
+            idLine,
+            function(result,event){if(event.status) fn_refreshWrapMoves_callback(result,idLine);else {alert(event.message); fn_hideSpinner();}});       
+    }
+    
+    function fn_refreshWrapMoves_callback(listWrapMoves,idLine)
+    {
+        var templateRow = $j('#template').find('tr.move.detail').clone();
+        
+        $j('#'+idLine).find('tr.move.detail').remove();
+        
+        $j.each(listWrapMoves,function()
+        {
+            var move = this.move;
+            var newRow = $j(templateRow).clone();
+            $j(newRow).attr('Id',move.Id);
+            $j(newRow).find('a.moveNumber').html(parseFloat(move.Name.replace(/[^0-9]/g,'')).toString()).attr('href','/'+move.Id);
+            $j(newRow).find('span.warehouseName').html(move.AcctSeedERP__Warehouse__c);
+            $j(newRow).find('span.locationName').html(move.AcctSeedERP__Location__c);
+
+            try
+            {           
+            var thisDate = new Date(move.AcctSeedERP__Movement_Date__c);
+            var convertedDate = new Date(thisDate.getUTCFullYear(),thisDate.getUTCMonth(),thisDate.getUTCDate());
+            $j(newRow).find('span.moveDate').html(convertedDate.toLocaleString().split(',')[0]);                                    
+            }
+            catch(err){}
+
+            $j(newRow).find('span.unitCost').html(accounting.formatMoney(move.AcctSeedERP__Unit_Cost__c));
+            $j(newRow).find('span.qty').html(move.AcctSeedERP__Quantity__c.toFixed(0));
+            $j(newRow).find('span.total').html(accounting.formatMoney(move.Total__c));
+
+            if(this.boolDeleteRender == true)
+            {
+                $j(newRow).find('input.btn_deleteMove').show();
+            }
+            else
+            {
+                $j(newRow).find('span.lockReason').html(this.strLockReason).show();
+            }
+
+            $j('#'+idLine).find('tr.move.new').before(newRow);          
+        });
+        fn_refreshWarehouses(idLine)
+        fn_hideSpinner();
+    }
+
+    function fn_saveMove(tableRow)
+    {
+        var idLine = $j(tableRow).closest('tbody.line').attr('id');
+        var idWarehouse = $j(tableRow).find('select.warehouse option:selected').val();
+        var idLocation = $j(tableRow).find('select.location option:selected').val();
+        var decQty = $j(tableRow).find('input.qty').val();
+        if(!decQty || isNaN(decQty) || decQty == 0)
+        {
+            alert('A valid Quantity is required.');
+            return;
+        }
+        
+        fn_showSpinner();
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.cGMBL_Common.createMovePurchase}',
+            idLine,idWarehouse,idLocation,decQty,
+            function(result,event){if(event.status) fn_saveMove_callback(result,idLine);else {alert(event.message); fn_hideSpinner();}});           
+    }
+    
+    function fn_saveMove_callback(move,idLine)
+    {
+        fn_refreshWrapMoves(idLine);
+        fn_refreshDetailRow(idLine);
+        fn_hideSpinner();
+    }
+
+    function fn_deleteMove(idMove)
+    {
+        fn_showSpinner();
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.cGMBL_Common.deleteRecord}',
+            idMove,
+            function(result,event){if(event.status) fn_deleteMove_callback(idMove);else {alert(event.message); fn_hideSpinner();}});        
+    }
+    
+    function fn_deleteMove_callback(idMove)
+    {
+        idLine = $j('#'+idMove).closest('tbody.line').attr('Id');
+        fn_refreshWrapMoves(idLine);
+        fn_refreshDetailRow(idLine);
+        fn_hideSpinner();
+    }
+    
+    function fn_refreshWarehouses(idLine)
+    {
+        fn_showSpinner();
+        
+        var idProduct = $j('#'+idLine).find('input.idProduct').val();
+        var idPurchaseOrder = $j('#idPurchaseOrder').val();
+
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.cGMBL_Common.retrieveWrapWarehousesByType}',
+            idPurchaseOrder, idProduct,
+            function(result,event){if(event.status) fn_refreshWarehouses_callback(result,idLine);else {alert(event.message); fn_hideSpinner();}});          
+    }
+    
+    function fn_refreshWarehouses_callback(listWrapWarehouse,idLine)
+    {
+        var selectList = $j('#'+idLine).find('select.warehouse');
+        $j(selectList).children().remove();
+
+        $j.each(listWrapWarehouse,function()
+        {
+            //console.log('warehouse name: '+this.Name);
+            var txt = HtmlDecode(this.Name);
+            $j(selectList).append($j('<option>',
+                {
+                    value: this.Id,
+                    text: txt
+                }));            
+        });
+        fn_refreshLocations(idLine);
+        fn_hideSpinner();
+    }
+
+    function HtmlDecode(s)
+    {
+        return $j('<div>').html(s).text();
+    }
+
+    function fn_refreshLocations(idLine)
+    {
+        fn_showSpinner();
+        
+        var idWarehouse = $j('#'+idLine).find('select.warehouse option:selected').val();
+        var idProduct = $j('#'+idLine).find('input.idProduct').val();
+        
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.cGMBL_Common.retrieveWrapLocations}',
+            idProduct, idWarehouse,
+            function(result,event){if(event.status) fn_refreshLocations_callback(result,idLine);else {alert(event.message); fn_hideSpinner();}});           
+    }
+    
+    function fn_refreshLocations_callback(listWrapLocation,idLine)
+    {
+        var selectList = $j('#'+idLine).find('select.location');
+        $j(selectList).children().remove();
+        
+        $j.each(listWrapLocation,function()
+        {
+            $j(selectList).append($j('<option>',
+                {
+                    value: this.Id,
+                    text:  this.Name
+                }));            
+        });
+        
+        fn_hideSpinner();
+    }
+
+
+
+
+    function fn_searchProduct()
+    {       
+        var searchString = $j('#input_searchProduct').val();
+        if(searchString.length < 1) return;
+        
+        var table = $j('#tbl_productSearchResult');
+        var tableBody = $j(table).find('tbody');
+        $j(table).css('display','');
+        
+        if(searchString.length > 0)
+        {           
+            Visualforce.remoting.Manager.invokeAction(
+                '{!$RemoteAction.cGMBL_PurchaseOrder_Ext.searchProduct}',
+                searchString,10,
+                function(result,event)
+                {
+                    if(event.status && event.result)
+                    {
+                        $j(tableBody).html('');
+                        $j.each(event.result, function()
+                                    {
+                                        var thisName = this.Name;
+                                        var thisProductCode = this.ProductCode;
+                                        var thisId = this.Id;
+                                                                        
+                                        var tableRowHTML = '<tr class=\"hoverBlue resultsRow\">';
+                                            tableRowHTML += '<td>';
+                                            tableRowHTML += '<span class=\"productName\"></span>';
+                                            tableRowHTML += '</td>';
+                                            tableRowHTML += '<td>';
+                                            tableRowHTML += '<span class=\"productCode\"></span>';      
+                                            tableRowHTML += '</td>';
+                                            tableRowHTML += '<td>';
+                                            tableRowHTML += '<span class=\"productDesc\"></span>';      
+                                            tableRowHTML += '</td>';                                                                                                                                
+                                            tableRowHTML += '</tr>';
+    
+                                        $j(tableBody).append(tableRowHTML);
+                                        var thisRow = $j(tableBody).children().last();
+                                        $j(thisRow).attr('id',thisId);
+                                        $j(thisRow).find('.productName').html(this.Name);
+                                        $j(thisRow).find('.productCode').html(this.ProductCode);
+                                        $j(thisRow).find('.productDesc').html(this.Description);                                        
+                                        $j(thisRow).click(function(){fn_createPurchaseOrderLine(this);});
+                                        $j(thisRow).css('cursor','pointer');
+                                    });
+                    }
+                    else
+                    {
+                        alert(event.message);
+                    }
+                }               
+                , {escape:true}
+            );  
+        }
+    } 
+
+    function fn_createPurchaseOrderLine(searchResultRow)
+    {
+        var idProduct = $j(searchResultRow).attr('id');
+        var idPurchaseOrder = $j('#idPurchaseOrder').val();
+        
+        $j('.popupBackground').css('display','');
+        
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.cGMBL_PurchaseOrder_Ext.createPurchaseOrderLine}',
+            idPurchaseOrder,idProduct,
+            function(result,event)
+            {           
+                if(event.status && event.result)
+                {
+                    fn_refreshDetailRows();
+                    $j('#tbl_productSearchResult').css('display','none');
+                    $j('#input_searchProduct').val('');
+                }
+                else
+                {
+                    $j('.popupBackground').css('display','none');
+                    alert(event.message);
+                }
+            }
+            ,{escape:true}
+        );  
+    }
+
+
+
+
+    
+
+
+    function fn_showSpinner()
+    {
+        spinner ++;
+        if(spinner > 0)
+        $j('#spinner').show();
+    }
+    function fn_hideSpinner()
+    {
+        spinner --;
+        if(spinner <= 0)
+        {
+            $j('#spinner').hide();
+            spinner = 0;
+            fn_rerenderDetail();
+        }
+    }
+    function fn_viewRecord(idRecord)
+    {
+        if(idRecord.length >=15)    
+        window.open('/'+idRecord,'_self');
+    }
+    function fn_editRecord(idRecord)
+    {
+        if(idRecord.length >=15)
+        {
+            var url = '/'+idRecord+'/e?retURL=/'+ $j('#idPurchaseOrder').val();
+            window.open(url,'_self');
+        }
+    }
+
+</script>
+</head>
+    <div id="spinner" class="spinner" style="display:none;"></div>
+    <div id="modal" class="modal" style="display:none;"></div>  
+    <apex:outputPanel id="detailContainer">
+        <apex:detail subject="{!idPurchaseOrder}" relatedList="false" id="theDetail"/>
+    </apex:outputPanel>
+    
+    <apex:form >
+        <apex:actionFunction name="fn_rerenderDetail" reRender="detailContainer"/>
+        
+        <input type="hidden" id="idVendor" value="{!AcctSeedERP__Purchase_Order__c.AcctSeedERP__Vendor__c}"/>
+        <input type="hidden" id="idPurchaseOrder" value="{!Id}"/>
+        
+        <apex:pageBlock mode="mainDetail">
+            <table class="list" id="tbl_detailRows">
+                <thead>
+                    <tr class="headerRow">
+                        <th style="width:10%">
+                            Action
+                        </th>
+                        <th style="text-align:center; width:5%">
+                            Line
+                        </th>
+                        <th style="width:20%">
+                            Product
+                        </th>
+                        <th style="width:13%; text-align:center;">
+                            Lot
+                        </th>
+                        <th style="width:5%; text-align:center;">
+                            Expiration
+                        </th>
+                        <th style="width:4%; text-align:center;">
+                            Pricing<br/>Units
+                        </th>
+                        <th style="width:5%; text-align:right;">
+                            Variant<br/>Qty
+                        </th>
+                        <th style="width:5%; text-align:right;">
+                            Variant<br/>Price
+                        </th>
+                        <th style="width:5%; text-align:right;">
+                            Unit<br/>Price
+                        </th>
+                        <th style="width:4%; text-align:center;">
+                            Price<br/>Override
+                        </th>                       
+                        <th style="width:5%; text-align:center;">
+                            Qty<br/>Ordered
+                        </th>
+                        <th style="width:5%; text-align:center;">
+                            Qty<br/>Received
+                        </th>                       
+                        <th style="width:7%; text-align:right;">
+                            Total<br/>Ordered
+                        </th>
+                        <th style="width:7%; text-align:right;">
+                            Total<br/>Received
+                        </th>
+                    </tr>
+                </thead>    
+            </table>
+            <br/>
+
+            <br/>
+            Search by Product Name or Product Code: &nbsp;&nbsp;<input type="text" id="input_searchProduct" onkeyup="fn_searchProduct();" size="50"/>
+            <br/>
+            <table id="tbl_productSearchResult" class="list" style="display:none;">
+                <thead>
+                <tr class="headerRow">
+                    <th>Product Name</th>
+                    <th>Product Code</th>
+                    <th>Description</th>
+                </tr>
+                </thead>
+                <tbody>
+                </tbody>
+            </table>
+        </apex:pageBlock>
+    </apex:form>
+    <div id="template" style="display:none;">
+        <table>
+            <tbody id="idLine" class="line">
+                <tr class="line dataRow">
+                    <td style="white-space:nowrap;">                        
+                        <input type="button" class="btn_deleteLine" value="del"       onclick="fn_deleteLine($j(this).closest('tbody.line').attr('id'))"/>          
+                        <input type="button" class="btn_receive"    value="receive"   onclick="fn_showReceiving($j(this).closest('tbody.line').attr('id'))"/>                   
+                    </td>
+                    <td style="text-align:center;">
+                        <a class="lineNumber"></a>
+                    </td>
+                    <td style="white-space:nowrap;">
+                        <a class="productName"></a>
+                        <br/>
+                        <span class="productCode"></span>
+                        <input type="hidden" class="idProduct"/>
+                        <input type="checkbox" class="hasVariablePrice" style="display:none;"/>
+                    </td>
+                    <td style="text-align:left; white-space:nowrap;">                   
+                        <div class="lot" style="position:relative;">
+                                <input type="button" class="btn_editLot" value="edit" onclick="fn_editRecord($j(this).closest('td').find('input.idLot').val())"/>
+                                <input type="button" class="btn_selectLot" value="select" onclick="fn_launchSelectLot($j(this).closest('tbody.line').attr('id'))"/>                         
+                                &nbsp;&nbsp;
+                                <a class="lotName"></a>
+                        </div>
+                        <input class="idLot" type="hidden"/>
+                    </td>
+                    <td style="text-align:center;">
+                        <span class="expirationDate"></span>
+                    </td>
+                    <td style="text-align:center;">
+                        <span class="pricingUnits"></span>
+                    </td>
+                    <td style="text-align:right;">
+                        <span class="lotVariantQty"></span>
+                    </td>
+                    <td style="text-align:right;">
+                        <span class="variantUnitPrice link" onclick="fn_launchEditPriceAndQuantity($j(this).closest('tbody.line').attr('id'))"></span>
+                    </td>
+                    <td style="text-align:right;">
+                        <span class="unitPrice link"        onclick="fn_launchEditPriceAndQuantity($j(this).closest('tbody.line').attr('id'))"></span>
+                    </td>
+                    <td style="text-align:center;"          onclick="fn_launchEditPriceAndQuantity($j(this).closest('tbody.line').attr('id'))">
+                        <input class="priceOverride" type="checkbox" disabled="disabled"/>  
+                    </td>               
+                    <td style="text-align:center;">
+                        <div class="qty" style="position:relative;">    
+                            <span class="qty link"          onclick="fn_launchEditPriceAndQuantity($j(this).closest('tbody.line').attr('id'))"></span>
+                        </div>
+                    </td>
+                    <td style="text-align:center;">
+                        <span class="qtyReceived"></span>
+                    </td>               
+                    <td style="text-align:right;">
+                        <span class="total"></span>
+                    </td>       
+                    <td style="text-align:right;">
+                        <span class="totalReceived"></span>
+                    </td>                                   
+                </tr>
+            </tbody>
+            <tr class="move header" style="background:#E0E0E0 !important;">
+                <th>
+                    <input type="button" value="hide" onclick="fn_hideReceiving($j(this).closest('tbody.line').attr('id'))"/>
+                </th>           
+                <th style="text-align:center;">
+                    Move
+                </th>               
+                <th style="text-align:center;">
+                    Receive to Warehouse
+                </th>
+                <th style="text-align:center;">
+                    Receive to Location
+                </th>   
+                <th style="text-align:center;">
+                    Move Date
+                </th>   
+                <th colspan="3"></th>       
+                <th style="text-align:right;">
+                    $ / EA
+                </th>   
+                <th colspan="2"></th>           
+                <th style="text-align:center;">
+                    Qty
+                </th>   
+                <th colspan="1"></th>   
+                <th style="text-align:right;">
+                    Total
+                </th>                                                               
+            </tr>
+            <tr id="idMove" class="move detail" style="background:#E0E0E0;">
+                <td>
+                    <input type="button" class="btn_deleteMove"  value="del"     onclick="fn_deleteMove($j(this).closest('tr').attr('Id'));" style="display:none;"/>
+                    <span class="lockReason" style="display:none;"></span>
+                </td>           
+                <td style="text-align:center;">
+                    <a class="moveNumber"></a>
+                </td>               
+                <td style="text-align:center;">
+                    <span class="warehouseName"></span>
+                </td>
+                <td style="text-align:center;">
+                    <span class="locationName"></span>
+                </td>   
+                <td style="text-align:center;">
+                    <span class="moveDate"></span>
+                </td>   
+                <td colspan="3"></td>       
+                <td style="text-align:right;">
+                    <span class="unitCost"></span>
+                </td>   
+                <td colspan="2"></td>           
+                <td style="text-align:center;">
+                    <span class="qty"></span>
+                </td>   
+                <td colspan="1"></td>   
+                <td style="text-align:right;">
+                    <span class="total"></span>
+                </td>                                                               
+            </tr>           
+            <tr class="move new" style="background:#E0E0E0;">
+                <td colspan="2">
+                    <input type="button" class="btn_saveMove" value="save" onclick="fn_saveMove($j(this).closest('tr'))" style="display:none;"/>
+                </td>           
+                <td style="text-align:center;">
+                    <select class="warehouse" onchange="fn_refreshLocations($j(this).closest('tbody.line').attr('id'))"></select>
+                </td>
+                <td style="text-align:center;">
+                    <select class="location"></select>
+                </td>   
+                <td colspan="7"></td>           
+                <td style="text-align:center;">
+                    <input type="text" class="qty" size="5" value="1" style="text-align:center;"/>
+                </td>   
+                <td colspan="2"></td>                                                           
+            </tr>           
+        </table>
+        <div class="popUp_selectLot" style="position:absolute; left:-125px; z-index:200; background:white; border:1px solid black">
+            <div style="margin:5px; text-align:center;">
+                <input type="button" class="btn_cancel" value="cancel" onclick="fn_cancelSelectLot($j(this).closest('tbody.line').attr('id'))"/>
+            </div>
+            <table>
+                <thead>
+                    <tr class="headerRow">
+                        <th>Lot Number</th>
+                        <th style="text-align:center;">
+                            Expiration
+                        </th>
+                        <th style="text-align:center;">
+                            <span class="variantHeader">Variant</span>
+                        </th>
+                        <th style="width:200px;"></th>
+                    </tr>
+                    <tr>
+                        <td>
+                            <input type="text" class="lotName" size="20" onkeyup="fn_searchLot($j(this).closest('tbody.line').attr('id'),5)"/>
+                        </td>
+                        <td style="text-align:center;">
+                            <input type="text" class="expirationDate" size="10"/>
+                        </td>
+                        <td style="text-align:center;">
+                            <input type="text" class="lotVariantQty" size="5"/>
+                        </td>
+                        <td>
+                            <input type="button" class="btn_create" value="create" onclick="fn_createLot($j(this).closest('tbody.line').attr('id'))"/>
+                        </td>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class="hoverBlue">
+                        <td style="text-align:left;">
+                            <span class="lotName"></span>
+                            <input type="hidden" class="idLot"/>
+                        </td>
+                        <td style="text-align:center;">
+                            <span class="expirationDate"></span>
+                        </td>
+                        <td style="text-align:center;">
+                            <span class="lotVariantQty"></span>
+                        </td>
+                        <td>
+                            <input type="button" class="btn_selectLot" value="select" onclick="fn_selectLot($j(this).closest('tbody.line').attr('id'),$j(this).closest('td').siblings().find('input.idLot').val())"/>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>        
+        </div>
+        <div class="popUp_priceAndQuantity"  style="position:absolute; left:-125px; z-index:200; background:white; border:1px solid black">
+            <div style="margin:5px; text-align:center;">
+                <input type="button" class="btn_save" value="save" onclick="fn_updatePriceAndQuantity($j(this).closest('tbody.line').attr('id'))"/>&nbsp;&nbsp;
+                <input type="button" class="btn_cancel" value="cancel" onclick="fn_cancelPriceAndQuantity($j(this).closest('tbody.line').attr('id'))"/>
+            </div>      
+            <table>
+                <tr>
+                    <td style="text-align:right;">
+                        <span>Price:&nbsp;</span>
+                    </td>
+                    <td style="text-align:left;white-space:nowrap;">
+                        <input type="text" class="price" size="10"/>&nbsp;/&nbsp;<span class="pricingUnits"></span>&nbsp;&nbsp;
+                        <input type="checkbox" class="priceOverride" onchange="fn_priceEnableSync($j(this).closest('tbody.line').attr('id'));"/><span>override</span>
+                    </td>
+                    <td style="text-align:left;white-space:nowrap;">
+                        
+                    </td>
+                </tr>
+                <tr>
+                    <td style="text-align:right;">
+                        <span>Qty:&nbsp;</span>
+                    </td>
+                    <td style="text-align:left;white-space:nowrap;">
+                        <input type="text" class="qty" size="10"/><span>&nbsp;EA</span>
+                    </td>
+                    <td>
+                    </td>
+                </tr>               
+            </table>
+        </div>
+    </div>
+    <apex:relatedList subject="{!Id}" list="AcctSeedERP__Accounts_Payable__r"/>
+    <apex:relatedList subject="{!Id}" list="CombinedAttachments"/>
+</apex:page>

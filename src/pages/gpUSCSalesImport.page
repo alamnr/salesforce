@@ -1,0 +1,740 @@
+<apex:page controller="gcUSCSalesImport" showHeader="true" sidebar="false" cache="false" docType="html-5.0">
+
+<head>
+<style>
+tr.hoverBlue:hover td{background:#00EEFF !important;}
+
+tr.total td{font-weight: bold;}
+
+tr.lowerline{height: 3px;}
+
+tr.lowerline td{ 
+    background: white;
+    padding-top: 1px !important;
+    padding-bottom: 1px !important;
+    font-weight: bold !important;
+    border-left: none !important;
+    border-right: none !important;
+    border-top: none !important;
+    border-bottom: none !important;
+}   
+
+.highlight{
+    background-color:yellow;
+}
+
+.displayoff{
+    display:none;
+}
+
+.displayon{
+    display:inline;
+}
+
+.chkProcess{
+    text-align: center;
+    font-size: 16px;
+}
+
+tr.topline td{
+    background: white; 
+    border-top: 2px solid black !important;
+    border-left: none !important;
+    border-right: none !important;
+    border-bottom: none !important;
+    padding-top: 10px !important;
+    padding-bottom: 1px !important;
+    font-weight: bold !important;
+}
+.link{
+    cursor:pointer;
+    text-decoration:underline;
+}
+.cursorIsPointer{
+    cursor:pointer;
+}
+.blue{
+    color:blue;
+}
+.green{
+    color:green;
+}
+.red{
+    color:red;
+}
+div.pq-grid-footer{
+    display:none;
+}
+div.pq-max{
+    display:none;
+}
+</style>
+
+<apex:stylesheet value="{!URLFOR($Resource.GMBLJS__jQueryUI,'/jquery-ui/jquery-ui.min.css')}"/>
+<apex:stylesheet value="{!URLFOR($Resource.GMBLJS__pqGridPro241,'/pqgrid.min.css')}"/>
+
+</head>
+<body>
+    <div style="margin:0 auto; width:90%">
+       <apex:form >
+            <div style="text-align:center;">
+                <br/>
+                <span id="spnTitle" style="font-size:large">USC Sales Data Import</span>
+                <br/><br/>
+            </div>
+            <br/>
+            
+            <apex:pageBlock >
+            
+                <div id="divImportSales">
+                    <p>Please select a USC sales data file for import:</p><br/>
+                    
+                    <input type="file" name="xlfile" id="xlf" onchange="fn_HandleFile(event);"/>
+                    &nbsp;&nbsp;<input type="button" id="save" value="Save" disabled="true" onclick="fn_Save();"/>
+                </div>
+                <br/><br/>
+                <apex:pageMessages />
+                <p id="importcount"></p>
+                <p id="issuecount"></p><br/>
+
+                <table>
+                    <tr>
+                        <td style="text-align:left; vertical-align:top;" width="65%">
+                            <div id="grdImportSales" width="100%"></div>
+                        </td>
+                        <td width="2%"></td>
+                        <td style="text-align:left; vertical-align:top;" width="31%">
+                            <div id="divinstruct" class="displayoff">
+                                <table class="list" width="70%" cellspacing="0" cellpadding="0" border="0" style="text-align: left;">
+                                    <tr class="headerRow" style="text-align: center;">
+                                        <th class="zen-deemphasize" scope="col" style="text-align: center;" colspan="2">
+                                            <b>INSTRUCTIONS</b>
+                                        </th>
+                                    </tr>
+                                    <tr>
+                                        <td width="100%"><p>Any data showing up in a highlighted cell contains an issue that will need to either be fixed or verified before it can be used to create a Sales Order.</p>
+                                        <p>There are two ways to fix data issues:</p>
+                                        <p>1. Save the import at this time and work through the data issues using the existing issue resolution screen.</p>
+                                        <p>2. Cancel the current import and modify the original data file in Excel before importing again.<br/><br/></p>
+                                        </td>
+                                    </tr>
+                                </table>
+                                <table class="list" width="70%" cellspacing="0" cellpadding="0" border="0" style="text-align: left;">
+                                    <tr>
+                                        <td width="85%">Valid Sales Orders in import file:</td>
+                                        <td id="validcount1" width="15%" style="text-align: right;">xxx</td>
+                                    </tr>
+                                    <tr>
+                                        <td width="85%">Invalid Sales Orders in import file:</td>
+                                        <td id="invalidcount1" width="15%" style="text-align: right;">xxx</td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </td>
+                        <td style="text-align:left; vertical-align:top;" width="2%"></td>
+                    </tr>
+                </table>
+                <br/><br/>
+                <span id="results" class="blue"></span>
+                     
+            </apex:pageBlock>       
+
+        </apex:form>
+    </div>
+    
+</body>
+
+<apex:includeScript value="{!$Resource.GMBLJS__jQuery}"/>
+<apex:includeScript value="{!URLFOR($Resource.GMBLJS__jQueryUI,'/jquery-ui/jquery-ui.min.js')}"/>
+<apex:includeScript value="{!URLFOR($Resource.GMBLJS__pqGridPro241,'/pqgrid.min.js')}"/>
+
+<apex:includeScript value="{!$Resource.GMBLJS__accountingJS}"/>
+<apex:includeScript value="{!$Resource.GMBLJS__ExcellentExport}"/>
+
+<apex:includeScript value="{!$Resource.GMBLJS__gsrSpinner}"/>
+<apex:includeScript value="{!$Resource.GMBLJS__gsrGrid}"/>
+
+<apex:includeScript value="{!URLFOR($Resource.JqueryXLSX,'/jszip.js')}"/>
+<apex:includeScript value="{!URLFOR($Resource.JqueryXLSX,'/xlsx.js')}"/>
+
+<script>function setFocusOnLoad() {}</script>
+<script type="text/javascript">
+
+    $j = jQuery.noConflict();
+
+    var jData;
+    var totalValidSOP;
+    var totalInvalidSOP;
+
+    function fixdata(data) {
+        var o = "", l = 0, w = 10240;
+        for(; l<data.byteLength/w; ++l) o+=String.fromCharCode.apply(null,new Uint8Array(data.slice(l*w,l*w+w)));
+        o+=String.fromCharCode.apply(null, new Uint8Array(data.slice(l*w)));
+        return o;
+    }
+
+    function to_json(workbook) {
+        var first_sheet_name = workbook.SheetNames[0];
+        var worksheet = workbook.Sheets[first_sheet_name];
+        var roa = XLSX.utils.sheet_to_row_object_array(worksheet);
+        return roa;
+    }
+
+    function fn_HandleFile(e) {
+        gSpinner.show();
+        $j("#importcount").html('');
+        $j("#issuecount").html('');
+        var f = e.target.files[0];
+        var reader = new FileReader();
+        var name = f.name;
+        reader.onload = function(e) {
+            var data = e.target.result;
+            var wb;
+            var arr = fixdata(data);
+            wb = XLSX.read(btoa(arr), {type: 'base64'});
+            jData = to_json(wb);
+            fn_RemoveJSONKeySpaces();
+            if (!fn_validColumns(jData)){
+                gSpinner.hide();
+                return;}
+            fn_ProcessImportFile();
+            fn_ValidateData();
+        };
+        reader.readAsArrayBuffer(f);
+    }
+    
+    function fn_RemoveJSONKeySpaces()
+    {
+        $j.each(jData, function(index) {
+            var that = this;
+                $j.each(that, function(key, value) {
+                var newKey = $j.trim(key);
+
+                if (typeof value === 'string')
+                {
+                    that[newKey] = $j.trim(value);
+                }
+
+                if (newKey !== key) {
+                    delete that[key];
+                }
+             });
+        });
+    }
+
+    function fn_ProcessImportFile()
+    {
+        var ind = 0;
+
+        jData.forEach(function(e) {
+            if (!e.hasOwnProperty('SOP Number'))
+            {
+                jData.splice(ind, 1);
+                ind++;
+            }
+            else
+            {
+                e.Contract_Unit_Cost__c=0;
+                e.Contract_Unit_Price__c=0;
+                e.Customer__c = null;
+                e.Customer_Name__c=e['Customer Name'].trim();
+                e.Customer_Number__c=e['Customer Number'].trim();
+                e.Error_DupSalesOrder__c=false;
+                
+                if (e.hasOwnProperty('Address 1 from Customer Master'))
+                    e.Import_Address__c=e['Address 1 from Customer Master'].trim();
+                if (e.hasOwnProperty('Address 1'))
+                    e.Import_Address__c=e['Address 1'].trim();
+                if (e.hasOwnProperty('City from Customer Master'))
+                    e.Import_City__c=e['City from Customer Master'].trim();
+                if (e.hasOwnProperty('City'))
+                    e.Import_City__c=e['City'].trim();
+                if (e.hasOwnProperty('State from Customer Master'))
+                    e.Import_State__c=e['State from Customer Master'].trim();
+                if (e.hasOwnProperty('State'))
+                    e.Import_State__c=e['State'].trim();
+                if (e.hasOwnProperty('Zip from Customer Master'))
+                    e.Import_Zip__c=e['Zip from Customer Master'].trim();
+                if (e.hasOwnProperty('Zip'))
+                    e.Import_Zip__c=e['Zip'].trim();
+                     
+                e.Import_Unit_Cost__c=stringtoFloat(e['Unit Cost']);
+                e.Import_Unit_Price__c=stringtoFloat(e['Unit Price'].trim());
+                e.Invoice_Date__c=Date.parse(e['Invoice Date'].trim().replace(/\/(\d\d)$/,"/20$1"));
+                e.Item_Description__c=e['Item Description'].trim();
+                e.Item_Number__c=e['Item Number'].trim();
+                e.Period_Closed__c=false;
+                e.Product__c=null;
+                e.Pricebook__c=null;
+                e.QTY__c=parseInt(e['QTY'].trim());
+                e.SalesOrderCreated__c
+                e.SOP_Number__c=e['SOP Number'].trim();
+            
+                delete e['SOP Number'];
+                delete e['Customer Name'];
+                delete e['Customer Number'];
+                delete e['Unit Cost'];
+                delete e['Unit Price'];
+                delete e['Invoice Date'];
+                delete e['Item Description'];
+                delete e['Item Number'];
+                delete e['QTY'];
+                if (e.hasOwnProperty('Zip')) delete e['Zip'];
+                if (e.hasOwnProperty('Zip from Customer Master')) delete e['Zip from Customer Master'];
+                if (e.hasOwnProperty('Customer Class')) delete e['Customer Class'];
+                if (e.hasOwnProperty('State')) delete e['State'];
+                if (e.hasOwnProperty('State from Customer Master')) delete e['State from Customer Master'];
+                if (e.hasOwnProperty('City')) delete e['City'];
+                if (e.hasOwnProperty('City from Customer Master')) delete e['City from Customer Master'];
+                if (e.hasOwnProperty('Address 1')) delete e['Address 1'];
+                if (e.hasOwnProperty('Address 1 from Customer Master')) delete e['Address 1 from Customer Master'];
+                if (e.hasOwnProperty('Extended Price')) delete e['Extended Price'];
+                if (e.hasOwnProperty('Extended Cost')) delete e['Extended Cost'];
+                if (e.hasOwnProperty('USC Gross Margin')) delete e['USC Gross Margin'];
+                if (e.hasOwnProperty('Prodigy Profit Share')) delete e['Prodigy Profit Share'];
+                if (e.hasOwnProperty('Sales Rep')) delete e['Sales Rep'];
+                if (e.hasOwnProperty('SOP Type')) delete e['SOP Type'];
+                if (e.hasOwnProperty('Salesperson ID')) delete e['Salesperson ID'];
+                ind++;
+            }
+         });
+
+    }
+
+    function fn_validColumns(jData)
+    {
+                
+        if (!jData[0].hasOwnProperty('Invoice Date')){
+            alert('File format error. Missing column (Invoice Date).');
+            return false;}
+        if (!jData[0].hasOwnProperty('SOP Number')){
+            alert('File format error. Missing column (SOP Number).');
+            return false;}
+        if (!jData[0].hasOwnProperty('Customer Number')){
+            alert('File format error. Missing column (Customer Number).');
+            return false;}
+        if (!jData[0].hasOwnProperty('Customer Name')){
+            alert('File format error. Missing column (Customer Name).');
+            return false;}
+        if (!jData[0].hasOwnProperty('Item Number')){
+            alert('File format error. Missing column (Item Number).');
+            return false;}
+        if (!jData[0].hasOwnProperty('Item Description')){
+            alert('File format error. Missing column (Item Description).');
+            return false;}
+        if (!jData[0].hasOwnProperty('QTY')){
+            alert('File format error. Missing column (QTY).');
+            return false;}
+        if (!jData[0].hasOwnProperty('Unit Cost')){
+            alert('File format error. Missing column (Unit Cost).');
+            return false;}
+        if (!jData[0].hasOwnProperty('Unit Price')){
+            alert('File format error. Missing column (Unit Price).');
+            return false;}
+            
+        return true;
+    }
+
+    function stringtoFloat(v)
+    {
+        var tmpval = v;
+
+        if (tmpval.substring(0,1) == '$')
+            tmpval = tmpval.substring(1,tmpval.length)
+
+        tmpval = tmpval.replace(/,/g,"");
+        tmpval = parseFloat(tmpval);
+        if (tmpval == null || isNaN(tmpval))
+            return 0;
+        else
+            return tmpval;
+    }
+
+    accounting.settings = {
+        currency: {
+            symbol : "$",   // default currency symbol is '$'
+            format: "%s%v", // controls output: %s = symbol, %v = value/number (can be object: see below)
+            decimal : ".",  // decimal point separator
+            thousand: ",",  // thousands separator
+            precision : 2   // decimal places
+        },
+        number: {
+            precision : 0,  // default precision on numbers is 0
+            thousand: ",",
+            decimal : "."
+        }
+    }
+
+    function fn_FinishValidate($gridDiv, result)
+    {
+
+        var lastSOP = '';
+
+        totalValidSOP = 0;
+        totalInvalidSOP = 0;
+
+        jData = result;
+
+        for(i = 0; i < jData.length; i++) {
+
+            if (lastSOP != jData[i].SOP_Number__c)
+            {
+                if (jData[i].Has_Error__c == true)
+                    totalInvalidSOP++;
+                else
+                    totalValidSOP++;
+
+                lastSOP = jData[i].SOP_Number__c;
+            }
+        }
+
+        $j("#validcount1").html(accounting.formatNumber(totalValidSOP));
+        $j("#invalidcount1").html(accounting.formatNumber(totalInvalidSOP));
+
+        $j('#save').prop('disabled', false);
+        $j("#divinstruct").removeClass("displayoff");
+        $j("#divinstruct").addClass("displayon");
+
+
+        fn_initGrid();
+        //$gridDiv.pqGrid( "option", "dataModel.data", jData );
+        $gridDiv.pqGrid('refreshDataAndView');
+        $gridDiv.pqGrid('refreshView');
+        gSpinner.hide();
+    }
+   
+    function fn_ValidateData()
+    {
+        //alert(JSON.stringify(jData));
+        var $gridDiv = $j('#grdImportSales');
+
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.gcUSCSalesImport.ValidateData}',
+            jData,false,
+            function(result,event){if(event.status) {fn_FinishValidate($gridDiv,result);} else {alert(event.message); gSpinner.hide();}},
+            {buffer:true, escape:false, timeout:120000});
+    }
+
+    function fn_FinishSave(result)
+    {
+        if (result != null && result != '')
+            $j("#importcount").html(result);
+        else
+        {
+            $j("#importcount").html(accounting.formatNumber(totalValidSOP) + ' Sales Orders created.');
+            $j("#issuecount").html(accounting.formatNumber(totalInvalidSOP) + ' records were not converted into Sales Orders due to missing or invalid data.  Please use the <a href="/apex/gpUSCSalesIssues">USC Issue Resolution</a> screen to fix these issues.');
+        } 
+        
+        $j('#save').prop('disabled', true);
+        $j('#xlf').prop('disabled', true);
+        $j("#divinstruct").removeClass("displayon");
+        $j("#divinstruct").addClass("displayoff");
+        $j('#grdImportSales').pqGrid( "destroy" );
+
+        gSpinner.hide();        
+    }
+
+    function fn_Save()
+    {
+        gSpinner.show();
+        jData.forEach(function(e) {
+            delete e['pq_cellcls'];
+        });
+        //console.log(jData);
+        Visualforce.remoting.Manager.invokeAction(
+        '{!$RemoteAction.gcUSCSalesImport.SaveData}',
+        jData,
+        function(result,event){if(event.status) fn_FinishSave(result);else {alert(event.message); gSpinner.hide();}},
+        {buffer:true, escape:false, timeout:120000});
+    }
+
+    function fnInitFormat(colModel)
+    {
+        $j.each(colModel, function(i,col)
+        {
+            if(col.gFormat == 'number')
+            {
+                $j.extend(col,{
+                    align:'center',
+                    render: function(ui)
+                    {
+                        var cont = eval('ui.rowData.'+ui.dataIndx);
+                        if (cont != null && !isNaN(cont) && cont != "")
+                            return accounting.formatNumber(cont);
+                    }
+                });
+            }
+            else if(col.gFormat == 'money')
+            {
+                $j.extend(col,{
+                    align:'right',
+                    halign:'right',
+                    render: function(ui)
+                    {
+                        var cont = eval('ui.rowData.'+ui.dataIndx);
+                        if (cont && cont != null && !isNaN(cont))
+                            return accounting.formatMoney(cont);
+                    }
+                });
+            }
+            else if(col.gFormat == 'percent')
+            {
+                $j.extend(col,{
+                    align:'right',
+                    halign:'right',
+                    render: function(ui)
+                    {
+                        var cont = eval('ui.rowData.'+ui.dataIndx);
+                        if (cont && cont != null && !isNaN(cont))
+                            return accounting.formatNumber(cont) + '%';
+                    }
+                });
+            }
+        });
+    }
+
+    function capitalizeFirstLetter(string) {
+
+        if (!string)
+            return null
+        else
+            return string.charAt(0).toUpperCase() + string.slice(1);
+    }
+
+
+    function formatcurrency(val) {
+        var cont = eval(val);
+        
+        if (cont && cont != null && !isNaN(cont))
+            return accounting.formatMoney(cont);
+        else
+            return accounting.formatMoney(0);
+    }
+
+    function formatError(msg, cellval)
+    {
+        return '<div title="' + msg + '"> ' + cellval + '</div>';
+    }
+
+    function getFormattedDate(date) {
+        var year = date.getFullYear();
+        var month = (1 + date.getMonth()).toString();
+        month = month.length > 1 ? month : '0' + month;
+        var day = date.getDate().toString();
+        day = day.length > 1 ? day : '0' + day;
+        return month + '/' + day + '/' + year;  
+    }
+
+    function fn_initGrid()
+    {
+        
+        var gridObj = {title:"USC Sales Data",
+                        collapsible:{on:false,collapsed:false,editable:false,toggle:false},
+                        columnTemplate: {sortable:true},
+                        dataModel:{data:jData},
+                        dragColumns:{enabled:false},
+                        editable:false,
+                        filterModel:{on:false, mode:'AND', header:false},
+                        freezeCols:0,
+                        freezeRows:0,
+                        height:600,
+                        historyModel:{on:false},
+                        hoverMode:'row',
+                        hwrap:false,
+                        numberCell:{show:false},
+                        pageModel: {type:null},
+                        pasteModel:{on:false},
+                        resizable: true,
+                        roundCorners: false,
+                        scrollModel: {autoFit:true},
+                        selectionModel: { type: null},
+                        showBottom:true,
+                        showHeader:true,
+                        showTitle:true,
+                        showTop:true,
+                        showToolbar:true,
+                        sortable:true,
+                        swipeModel:{on:false},
+                        virtualX: false,
+                        virtualY: false,
+                        width:1200,
+                        wrap:false}; 
+
+        gridObj.colModel=
+            [{dataIndx:'SOP_Number__c',         title:'SOP Number',                 dataType: "string"},
+            {dataIndx:'Invoice_Date__c',        title:'Invoice Date' ,              dataType: "string"},
+            {dataIndx:'Customer_Name__c',       title:'Customer Name' ,             dataType: "string", hidden:true},
+            {dataIndx:'Customer_Number__c',     title:'Customer Number',            dataType: "string"},
+            {dataIndx:'Item_Number__c',         title:'Product Code',               dataType: "string"},
+            {dataIndx:'Item_Description__c',    title:'Product Description',        dataType: "string", hidden:true},
+            {dataIndx:'QTY__c',                 title:'QTY',                        dataType:'float', gFormat:'number', minWidth:50, maxWidth:50},
+            {dataIndx:'Import_Unit_Cost__c',         title:'Import&nbsp;<br/>Unit Cost',      align:'right', dataType:'float', gFormat:'money', minWidth:90, maxWidth:90},
+            {dataIndx:'Import_Unit_Price__c',        title:'Import&nbsp;<br/>Unit Price',     align:'right', dataType:'float', gFormat:'money', minWidth:90, maxWidth:90},
+            {dataIndx:'Contract_Unit_Cost__c',       title:'Contract&nbsp;<br/>Unit Cost',    align:'right', dataType:'float', gFormat:'money', minWidth:90, maxWidth:90},
+            {dataIndx:'Contract_Unit_Price__c',      title:'Contract&nbsp;<br/>Unit Price',   align:'right', dataType:'float', gFormat:'money', minWidth:90, maxWidth:90},
+            {dataIndx:'Customer__c',            title:'Customer__c',                hidden:true},
+            {dataIndx:'Product__c',             title:'Product__c',                 hidden:true},
+            {dataIndx:'Pricebook__c',           title:'Pricebook',                  hidden:true},
+            {dataIndx:'Error_DupSalesOrder__c', title:'Error_DupSalesOrder',        dataType: "string", hidden:true},
+            {dataIndx:"scrollSpacer", minWidth:15, maxWidth:15}];
+
+
+        //fnInitFormat(gridObj.colModel);
+        gGrid.initFormat(gridObj.colModel);
+        gGrid.initFilter(gridObj.colModel);
+
+ 
+        $j.each(gridObj.colModel, function(i,col)
+        {
+
+            if(col.dataIndx == 'Invoice_Date__c')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        var d = new Date(ui.rowData.Invoice_Date__c);
+                      
+                         if(ui.rowData.Period_Closed__c == true){
+                            $j(this).pqGrid('addClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'highlight'});
+                            return formatError('The invoice date falls in a closed period. The period must be reopened in order to import this sales order.', getFormattedDate(d));    
+                        }
+                        else
+                            return getFormattedDate(d);
+                    }
+                });
+            }
+
+            else if(col.dataIndx == 'Item_Number__c')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.Product__c == null){
+                            $j(this).pqGrid('addClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'highlight'});
+                            return formatError('Product not found and must be created using normal operating procedures.  The imported product code did not match an existing products product code or Product Code (NDC without dashes).',ui.rowData.Item_Number__c);    
+                        }
+                        else
+                            return '<a href=/' + ui.rowData.Product__c + '>' + ui.rowData.Item_Number__c + '</a>';
+                    }
+                });
+            }
+
+            else if(col.dataIndx == 'SOP_Number__c')
+            {   
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.Error_DupSalesOrder__c == true){
+                            $j(this).pqGrid('addClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'highlight'});
+                            return formatError('SOP number already exists in the system.',ui.rowData.SOP_Number__c);    
+                        }
+                        else
+                            return ui.rowData.SOP_Number__c;
+                    }
+                });
+            }
+
+            else if(col.dataIndx == 'Customer_Number__c')
+            {   
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.Customer__c == null)
+                        {
+                            $j(this).pqGrid('addClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'highlight'});
+                            return formatError("A customer with this USC Account Number was not found.",ui.rowData.Customer_Number__c);
+                        }
+                        else
+                            return '<a href=/' + ui.rowData.Customer__c + '>' + ui.rowData.Customer_Number__c + '</a>';
+                             
+                    }
+                });
+            }
+
+            else if(col.dataIndx == 'Import_Unit_Cost__c')
+            {   
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+
+                        if(ui.rowData.Product__c != null && ui.rowData.Contract_Unit_Cost__c != null && ui.rowData.Import_Unit_Cost__c != ui.rowData.Contract_Unit_Cost__c)
+                        {
+                            $j(this).pqGrid('addClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'highlight'});
+                            return formatError("The imported unit cost is not equal to the recorded contract unit cost.", formatcurrency(ui.rowData.Import_Unit_Cost__c)); 
+                        }
+                        else
+                            return formatcurrency(ui.rowData.Import_Unit_Cost__c);
+                    }
+                });
+            }
+            else if(col.dataIndx == 'Import_Unit_Price__c')
+            {   
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.Product__c != null && ui.rowData.Contract_Unit_Price__c != null && ui.rowData.Import_Unit_Price__c != ui.rowData.Contract_Unit_Price__c)
+                        {
+                            $j(this).pqGrid('addClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'highlight'});
+                            return formatError("The imported unit price is not equal to the contract unit price recorded in the customer's pricebook.", formatcurrency(ui.rowData.Import_Unit_Price__c));
+                        }
+                        else
+                            return formatcurrency(ui.rowData.Import_Unit_Price__c);
+                    }
+                });
+            }
+             else if(col.dataIndx == 'Contract_Unit_Cost__c')
+            {   
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.Product__c != null && ui.rowData.Contract_Unit_Cost__c == null)
+                        {
+                            $j(this).pqGrid('addClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'highlight'});
+                            return formatError("There is no unit cost associated with this product in the USC pricebook.", "N/A");                    
+                        }
+                        else if(ui.rowData.Product__c != null && ui.rowData.Import_Unit_Cost__c != ui.rowData.Contract_Unit_Cost__c)
+                        { 
+                            $j(this).pqGrid('addClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'highlight'});
+                            return formatError("The imported unit cost is not equal to the recorded contract cost.", formatcurrency(ui.rowData.Contract_Unit_Cost__c));
+                        }                           
+                        else
+                            return formatcurrency(ui.rowData.Contract_Unit_Cost__c);
+                    }
+                });
+            }
+             else if(col.dataIndx == 'Contract_Unit_Price__c')
+            {   
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.Pricebook__c == null && ui.rowData.Product__c != null && ui.rowData.Customer__c != null)
+                        {
+                            $j(this).pqGrid('addClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'highlight'});
+                            return formatError("There is no pricebook associated with this customer.", 'N/A');   
+                        }
+                        else if(ui.rowData.Product__c != null && ui.rowData.Pricebook__c != null && ui.rowData.Contract_Unit_Price__c == null)
+                        {
+                            $j(this).pqGrid('addClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'highlight'});
+                            return formatError("There is no unit price associated with this product in the customer's pricebook.", "N/A")                             
+                        }
+                        else if(ui.rowData.Product__c != null && ui.rowData.Pricebook__c != null && ui.rowData.Import_Unit_Price__c != ui.rowData.Contract_Unit_Price__c)
+                        { 
+                            return formatError("The imported unit price is not equal to the contract price recorded in the customer's pricebook.", formatcurrency(ui.rowData.Import_Unit_Price__c));
+                        }                           
+                        else
+                            return formatcurrency(ui.rowData.Contract_Unit_Price__c);
+                    }
+                });
+            }
+        }); 
+
+        var $gridDiv = $j('#grdImportSales');
+        $gridDiv.pqGrid(gridObj);
+        $gridDiv.pqGrid('refreshDataAndView');
+        $gridDiv.pqGrid('refreshView');
+
+    }
+
+</script>
+
+</apex:page>

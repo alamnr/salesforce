@@ -1,0 +1,490 @@
+<apex:page StandardController="Account" extensions="gcAccount_Ext" showHeader="true" sidebar="true">
+
+<head>
+<style>
+.spinner {
+    background: rgba(0,0,0,.2);
+    background-image: url('/img/loading32.gif');
+    background-repeat: no-repeat;
+    background-attachment: fixed;	    
+    background-position: center;
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    z-index: 9998;
+}
+.modal {
+    background: rgba(0,0,0,.2);
+    background-repeat: no-repeat;
+    background-attachment: fixed;	    
+    background-position: center;
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    z-index: 100;
+}
+tr.hoverBlue:hover td{background:#00EEFF !important;}
+.link{
+	cursor:pointer;
+	text-decoration:underline;
+}
+tr.total td{
+	font-weight: bold;
+}
+table{
+	/*border-collapse:collapse;*/
+}
+#warehouse div.pq-grid-footer{
+	display:none;
+}
+#product div.pq-grid-footer{
+	display:none;
+}
+#detail div.pq-grid-footer{
+	display:none;
+}
+</style>
+
+<apex:includeScript value="{!$Resource.GMBLJS__jQuery}"/>
+<apex:stylesheet value="{!URLFOR($Resource.GMBLJS__jQueryUI,'/jquery-ui/jquery-ui.min.css')}"/>
+<apex:includeScript value="{!URLFOR($Resource.GMBLJS__jQueryUI,'/jquery-ui/jquery-ui.min.js')}"/>
+<apex:includeScript value="{!$Resource.GMBLJS__accountingJS}"/>
+<apex:includeScript value="{!$Resource.GMBLJS__ExcellentExport}"/>
+<apex:stylesheet value="{!URLFOR($Resource.GMBLJS__pqGridPro,'/pqgrid.min.css')}"/>
+<apex:includeScript value="{!URLFOR($Resource.GMBLJS__pqGridPro,'/pqgrid.min.js')}"/>
+
+<script>function setFocusOnLoad() {}</script>
+<script type="text/javascript">
+    $j = jQuery.noConflict();
+
+    var spinner = +0;
+
+    $j(document).ready(function()
+    {
+    	fn_initGrid_salesHistory();
+    });
+
+	accounting.settings = {
+		currency: {
+			symbol : "$",   // default currency symbol is '$'
+			format: "%s%v", // controls output: %s = symbol, %v = value/number (can be object: see below)
+			decimal : ".",  // decimal point separator
+			thousand: ",",  // thousands separator
+			precision : 0   // decimal places
+		},
+		number: {
+			precision : 0,  // default precision on numbers is 0
+			thousand: ",",
+			decimal : "."
+		}
+	}
+
+	function fn_showSpinner()
+	{
+		spinner ++;
+		if(spinner > 0)
+		$j('#spinner').show();
+	}
+	function fn_hideSpinner()
+	{
+		spinner --;
+		if(spinner <= 0)
+		{
+			$j('#spinner').hide();
+			spinner = 0;
+		}
+	}
+	function HtmlDecode(s)
+	{
+		return $j('<div>').html(s).text();
+	}
+	function fn_refreshTotal($gridDiv,pageData)
+	{
+		var totalRow = {isTotal:true, pq_rowcls:'total'};
+		var totalColumns = [];
+		$j.each($gridDiv.pqGrid('getColModel'), function(i,col)
+		{
+			if(col.gTotal)
+			{
+				totalRow[col.dataIndx] = +0;
+				totalColumns.push(col.dataIndx);
+			}
+			else
+			{
+				totalRow[col.dataIndx] = null;
+			}
+		});
+
+		//aggregate the totals
+		$j.each(pageData, function(i,row)
+		{
+			$j.each(totalColumns, function(j,dataIndx)
+			{
+				if(!isNaN(row[dataIndx]))
+					totalRow[dataIndx] += parseFloat(row[dataIndx]);
+			});
+		});
+
+		if($gridDiv.find('.pq-grid-summary').length == 0)
+			$j("<div class='pq-grid-summary'></div>").prependTo($gridDiv.find('.pq-grid-bottom'));
+		$gridDiv.pqGrid("createTable", {data:[totalRow], $cont: $gridDiv.find('div.pq-grid-summary')});		
+	}
+	function fn_refreshGrid_callback($gridDiv, listObj)
+	{
+		var data = [];
+
+		$j.each(listObj, function(i,obj)
+		{
+			data.push(obj.mapProperty);
+		});
+		$gridDiv.pqGrid('option','dataModel.data', data);
+
+		if(listObj.length > 0)
+		{
+			$j.each($gridDiv.pqGrid('getColModel'), function(i,col)
+			{
+				if(col.gFilter)
+				{
+					col.filter.cache = null;
+					col.filter.options = $gridDiv.pqGrid('getData',{dataIndx:[col.dataIndx]});
+
+					var currentFilterValid = false;
+
+					$j.each(col.filter.options, function(i,opt)
+					{
+						if(opt[col.dataIndx] == col.filter.value)
+							currentFilterValid = true;
+					});
+
+					if(!currentFilterValid)
+						col.filter.value = '';
+				}
+			});
+			$gridDiv.pqGrid('refreshDataAndView');
+		}
+		$gridDiv.pqGrid('refreshView');
+
+		fn_hideSpinner();
+		return;	
+	}
+	function fn_initFormat(colModel)
+	{
+		$j.each(colModel, function(i,col)
+		{
+			if(col.gFormat == 'number')
+			{
+				$j.extend(col,{
+					align:'center',
+					render: function(ui)
+					{
+						var cont = eval('ui.rowData.'+ui.dataIndx);
+						if (cont != null && !isNaN(cont))
+							return accounting.formatNumber(cont);
+					}
+				});
+			}
+			else if(col.gFormat == 'money')
+			{
+				$j.extend(col,{
+					align:'right',
+					halign:'right',
+					render: function(ui)
+					{
+						var cont = eval('ui.rowData.'+ui.dataIndx);
+						if (cont && cont != null && !isNaN(cont))
+							return accounting.formatMoney(cont);
+					}
+				});
+			}
+			else if(col.gFormat == 'checkbox')
+			{
+				$j.extend(col,{
+					align:'center',
+					halign:'center',
+					render: function(ui)
+					{
+						if(ui.rowData.pq_rowcls && ui.rowData.pq_rowcls.indexOf('total') >= 0) return;
+
+						var cont = eval('ui.rowData.'+ui.dataIndx);
+						var $wrap = $j('<wrap>').append($j('<input>').attr('type','checkbox').attr('disabled','disabled'));
+						if(cont == 'true')
+						{
+							$wrap.children().first().attr('checked','checked');
+							return $wrap.html();
+						}
+						else
+						{
+							return $wrap.html();
+						}
+					}
+				});				
+			}
+		});
+	}
+	function fn_initFilter(colModel)
+	{
+		$j.each(colModel, function(i,col)
+		{
+			if(col.gFilter)
+			{
+				$j.extend(col,{
+		        	filter:
+		        	{
+			        	type:'select',
+			            condition: 'equal',
+			            prepend: { '': '--All--' },
+			            valueIndx: col.dataIndx,
+			            labelIndx: col.dataIndx,
+			            listeners: ['change'],
+			            value:'',
+			            cache:null,
+			            options:null
+		        	}
+		    	});
+			}
+		});
+	}
+
+	function fn_initGrid_salesHistory()
+	{
+		var gridObj = {title:"Sales History&nbsp;&nbsp;<span style='font-weight:normal; font-style:italic'></span>&nbsp;&nbsp;<a download='export.xls' href='#' onclick='return fn_export($j(\"#detail\"),this);$j(\"#exportStage\").empty();'>Export XLS</a>",
+						collapsible:{on:false,collapsed:false},
+						columnTemplate: {minWidth:10, sortable:true},
+						dataModel:{data:null, sorting:'local', location:'local', sortDir:'down', sortIndx:'periodName'}, 
+						dragColumns:{enabled:false},
+						editable:false,
+						filterModel:{on:true, mode:'AND', header:true},
+						freezeCols:0,
+						freezeRows:0,
+						height:300,
+						historyModel:{on:false},
+						hoverMode:'row',
+						hwrap:false,
+						numberCell:{show:false},
+						pageModel: {type:null},
+						pasteModel:{on:false},
+						resizable: true,
+						roundCorners: false,
+						scrollModel: {autoFit:true},
+						selectionModel: {type: null},
+						showBottom:true,
+						showHeader:true,
+						showTitle:false,
+						showTop:true,
+						showToolbar:true,
+						sortable:true,
+						swipeModel:{on:false},
+						virtualX: false,
+						virtualXHeader: false,
+						virtualY: false,
+						width:'auto',
+						wrap:false};
+
+
+/*
+			obj.mapProperty.put('idPeriod', cube.idPeriod);
+			if(mapPeriod.containsKey(cube.idPeriod))
+			{
+				obj.mapProperty.put('periodName', mapPeriod.get(cube.idPeriod).Name);
+			}
+			
+			obj.mapProperty.put('idProduct', cube.idProduct);
+			if(mapProduct.containsKey(cube.idProduct))
+			{
+				Product2 product = mapProduct.get(cube.idProduct);
+				obj.mapProperty.put('productName',product.Name);
+				obj.mapProperty.put('productCode',product.ProductCode);
+			}
+
+			obj.mapProperty.put('idOrder', cube.idOrder);
+			if(mapOrder.containsKey(cube.idOrder))
+			{
+				AcctSeedERP__Sales_Order__c order = mapOrder.get(cube.idOrder);
+				obj.mapProperty.put('orderName',String.valueOf(Integer.valueOf(order.Name.replaceAll('[^0-9]',''))));
+				obj.mapProperty.put('orderStatus',order.AcctSeedERP__Status__c);
+				if(order.Fill_Date__c != null)
+				obj.mapProperty.put('fillDate',order.Fill_Date__c.format());
+				obj.mapProperty.put('warehouseName',order.Warehouse__r.Name);
+			}
+
+			obj.mapProperty.put('idBilling', cube.idBilling);
+			if(mapBilling.containsKey(cube.idBilling))
+			{
+				AcctSeed__Billing__c billing = mapBilling.get(cube.idBilling);
+				obj.mapProperty.put('billingName',String.valueOf(Integer.valueOf(billing.Name.replaceAll('[^0-9]',''))));
+				if(billing.AcctSeed__Date__c != null)
+				obj.mapProperty.put('billingDate',billing.AcctSeed__Date__c.format());
+			}
+
+			obj.mapProperty.put('revenue',String.valueOf(cube.rev.setScale(6)));
+			obj.mapProperty.put('expense',String.valueOf(cube.exp.setScale(6)));
+			obj.mapProperty.put('profit',String.valueOf((cube.rev - cube.exp).setScale(6)));
+			obj.mapProperty.put('quantity',String.valueOf(cube.qty.setScale(6)));
+
+*/
+
+		gridObj.colModel=[{dataIndx:"periodName", 			title:"Period", 			align:"left", 	dataType:"string", gFilter:true},
+						  {dataIndx:"productName", 			title:"Product Name", 		align:"left", 	dataType:"string", gFilter:true},
+						  {dataIndx:"productCode", 			title:"Product Code", 		align:"left", 	dataType:"string", gFilter:true},
+						  {dataIndx:"orderName", 			title:"Order", 				align:"left", 	dataType:"float",  gFilter:true},
+						  {dataIndx:"fillDate", 			title:"Fill Date", 			align:"left", 	dataType:"date",   gFilter:true},
+						  {dataIndx:"orderStatus", 			title:"Status", 			align:"left", 	dataType:"string", gFilter:true},
+						  {dataIndx:"billingName", 			title:"Billing", 			align:"left", 	dataType:"float",  gFilter:true},
+						  {dataIndx:"billingDate", 			title:"Bill Date", 			align:"left", 	dataType:"date",   gFilter:true},
+						  {dataIndx:"warehouseName", 		title:"Fill From Whs", 			align:"left", 	dataType:"string", gFilter:true},
+
+						  {dataIndx:"revenue", 				title:"Revenue", 			align:"right", dataType:"float", gFormat:'money', gTotal:true},
+						  {dataIndx:"expense", 				title:"Expense", 			align:"right", dataType:"float", gFormat:'money', gTotal:true},
+						  {dataIndx:"profit", 				title:"Profit", 			align:"right", dataType:"float", gFormat:'money', gTotal:true},
+						  {dataIndx:"quantity", 			title:"Qty", 				align:"center", dataType:"float", gFormat:'number', gTotal:true}];
+
+		fn_initFormat(gridObj.colModel);
+		fn_initFilter(gridObj.colModel);
+
+		$j.each(gridObj.colModel, function(i,col)
+		{
+			if(col.dataIndx == 'orderName')
+			{
+				$j.extend(col,{
+					render:function(ui)
+					{
+						if(ui.rowData.lotName && ui.rowData.lotName != null && ui.rowData.lotName.length > 0)
+						var $myObj = $j('<a>').html(ui.rowData.lotName).attr('href','/'+ui.rowData.idLot).attr('target','_blank');
+						return $j('<wrap>').append($myObj).html();
+					}
+				});
+			}
+
+			if(col.dataIndx == 'orderName')
+			{
+				$j.extend(col,{
+					render:function(ui)
+					{
+						var $myObj = $j('<a>').html(ui.rowData.orderName).attr('href','/'+ui.rowData.idOrder).attr('target','_blank');
+						return $j('<wrap>').append($myObj).html();
+					}
+				});
+			}
+			if(col.dataIndx == 'billingName')
+			{
+				$j.extend(col,{
+					render:function(ui)
+					{
+						var $myObj = $j('<a>').html(ui.rowData.billingName).attr('href','/'+ui.rowData.idBilling).attr('target','_blank');
+						return $j('<wrap>').append($myObj).html();
+					}
+				});
+			}
+
+
+		});
+
+		var $gridDiv = $j('#detail');
+
+		$gridDiv.pqGrid(gridObj);
+
+		$gridDiv.on('pqgridrefresh', function(event, ui)
+		{
+	        fn_refreshTotal($j(this),ui.pageData);
+		});
+
+		fn_refreshGrid_salesOrderHistory();
+	}
+
+	function fn_refreshGrid_salesOrderHistory()
+	{
+		fn_showSpinner();
+		var $gridDiv = $j('#detail'); 
+
+		Visualforce.remoting.Manager.invokeAction(
+			'{!$RemoteAction.gcAccount_Ext.salesOrderHistory}',
+			'{!Id}',
+			function(result,event){if(event.status) fn_refreshGrid_callback($gridDiv,result);else {alert(event.message); fn_hideSpinner();}},
+			{buffer:true, escape:true, timeout:120000});	
+	}
+
+	function fn_export($gridDiv,aTag)
+	{
+		fn_createExportTable($gridDiv);
+		return ExcellentExport.excel(aTag, 'exportTable', 'exportWorkSheet');
+	}
+
+	function fn_createExportTable($gridDiv)
+	{
+		fn_showSpinner();
+
+		var grid = $gridDiv.pqGrid('getInstance').grid;
+		var tableData = grid.option('dataModel').data;
+		var colModel = grid.getColModel();
+
+		var $rowTemplate = $j('<tr></tr>');
+		var $header = $j('<tr></tr>');
+
+		//build-up the header row
+		//build-up a template detail row
+		$j.each(colModel, function(i,col)
+		{
+			var $newTD = $j('<td></td>');
+			var $newTH = $j('<th style="border:1px solid black"></th>');
+			if(!col.hidden && col.dataIndx != 'scrollSpacer')
+			{
+				$header.append($newTH.clone().addClass(col.dataIndx).html(col.title));
+				$rowTemplate.append($newTD.clone().attr('id',col.dataIndx));
+			}
+		});
+
+		//tableData.push(totalRows[0]);
+
+		//create the table
+		$j('#exportStage').html('');
+		$table = $j('<table></table>');
+		$table.attr('id','exportTable');
+
+		//add the header row
+		//$table.append('<tr><td style="font-size:larger; font-weight:bold;"></td>This is the title.</tr>');
+		$table.append($header);
+
+		//create and add the detail rows
+		$j.each(tableData, function(i, dataRow){
+			var $newRow = $rowTemplate.clone();
+			if(dataRow.pq_rowcls && dataRow.pq_rowcls.contains('total'))
+			{
+				$newRow.css('font-weight','bold');
+			}
+
+			$j.each($newRow.find('td'),function (j, cell){
+				idTd = $j(cell).attr('id');
+				if(dataRow.hasOwnProperty(idTd))
+				{
+					var cont = dataRow[idTd];
+					if(!isNaN(cont))
+					{
+						cont = accounting.formatNumber(cont);
+					} 
+					$j(cell).html(cont).addClass(idTd).removeAttr('id');
+				}
+			});
+
+			$table.append($newRow);
+		});
+
+		$j('#exportStage').append($table);
+
+		fn_hideSpinner();
+	}
+</script>
+</head>
+<div id="spinner" class="spinner" style="display:none;"></div>
+<div style="width:100%; margin:0 auto">
+
+	<div><div id="detail"></div></div>
+
+</div>
+
+<div id="exportStage" style="display:none;"></div>
+
+</apex:page>

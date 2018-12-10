@@ -1,0 +1,32 @@
+<apex:component controller="gcDocument_SalesOrder" layout="none" access="global">
+
+<apex:attribute name="attrIdSalesOrder" assignTo="{!idSalesOrder}" type="String" access="global" description="The Id of the SalesOrder."/>
+Please find attached a detailed Picking Slip
+
+***PICKING SLIP SUMMARY***
+Sales Order Number:  {!order.Name}
+Date: <apex:outputText value="{0, date, MMMM d','  yyyy}"><apex:param value="{!order.Fill_Date__c}" /> </apex:outputText>
+**********************
+
+***SALES ORDER LINE ITEMS***
+<apex:repeat value="{!order.AcctSeedERP__Sales_Order_Line__r}" var="line">
+{!line.AcctSeedERP__Product__r.Name}.....<apex:outputText value="{0, number,###,##0}"><apex:param value="{!line.AcctSeedERP__Quantity_Ordered__c}"/></apex:outputText>
+</apex:repeat>
+
+*
+***PLEASE SEE ATTACHMENT FOR ALL PICKING SLIP DETAILS***
+
+
+
+
+
+
+
+
+
+
+
+
+
+[do not delete ref:{!$CurrentPage.parameters.idAttachment}]
+</apex:component>

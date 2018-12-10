@@ -1,0 +1,3 @@
+<apex:page showHeader="false" action="{! URLFOR($Resource.InventoryAdjustmentHelper) }">
+    <p>Redirecting to help content...</p>
+</apex:page>

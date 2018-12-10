@@ -1,0 +1,2062 @@
+<apex:page controller="gcApplyCashReceipt" showHeader="true" cache="false" sidebar="false">
+<head>
+<style>
+tr.hoverBlue:hover td{background:#00EEFF !important;}
+
+tr.total td{font-weight: bold;}
+
+tr.lowerline{height: 3px;}
+
+tr.lowerline td{ 
+    background: white;
+    padding-top: 1px !important;
+    padding-bottom: 1px !important;
+    font-weight: bold !important;
+    border-left: none !important;
+    border-right: none !important;
+    border-top: none !important;
+    border-bottom: none !important;
+}   
+
+tr.ui-state-hover:hover td{background:#00EEFF !important;}
+
+.rowlocked{
+ background-color:#D8D8D8;
+}
+
+.link{
+    cursor:pointer;
+    text-decoration:none;
+}
+
+.displayoff{
+    display:none;
+}
+
+.displayon{
+    display:inline;
+}
+
+.divline{
+    float:left;
+    color:blue;
+}
+
+.highlight{
+    background-color:yellow;
+}
+
+.bordertop{
+    border-top: 1px solid #000;
+}
+
+.right{
+    text-align:right;
+}
+
+.left{
+    text-align:left;
+}
+
+.center{
+    text-align:left;
+}
+
+.font1{
+    font-size:11px;
+}
+
+.font2{
+    font-size:12px;
+}
+
+.selectedCR{
+    background-color:#00FF00;
+}
+
+.errcolor{
+    background-color:red;
+}
+
+.fixedissue{
+    background-color:GreenYellow;
+}
+
+.chkProcess{
+    text-align: center;
+    font-size: 16px;
+}
+
+a.lnk:link {color:#0000FF;}
+a.lnk:visited {color:#0000FF;}
+a.lnk:hover {color:#FF0000;}
+
+tr.topline td{
+    background: white; 
+    border-top: 2px solid black !important;
+    border-left: none !important;
+    border-right: none !important;
+    border-bottom: none !important;
+    padding-top: 10px !important;
+    padding-bottom: 1px !important;
+    font-weight: bold !important;
+}
+.link{
+    cursor:pointer;
+    text-decoration:underline;
+}
+.cursorIsPointer{
+    cursor:pointer;
+}
+.red{
+    color:#B22222;
+}
+div.pq-grid-footer{
+    display:none;
+}
+div.pq-max{
+    display:none;
+}
+.font1{
+    font-size:8;
+}
+.font2{
+    font-size:12px;
+}
+.border1{
+    border: 1px solid #000;
+}
+td{
+    text-align:left;
+    vertical-align:top;
+}
+*{
+    font-family: sans-serif;
+}
+.center{
+    text-align:center;
+}
+.right{
+    text-align:right;
+}
+.left{
+    text-align:left;
+}
+.top{
+    vertical-align:top;
+}
+.headerLabel{
+    font-size:12px;
+    font-weight:bold;
+}
+
+</style>
+
+<apex:stylesheet value="{!URLFOR($Resource.GMBLJS__jQueryUI,'/jquery-ui/jquery-ui.min.css')}"/>
+<apex:stylesheet value="{!URLFOR($Resource.GMBLJS__pqGridPro241,'/pqgrid.min.css')}"/>
+
+<apex:includeScript value="{!$Resource.GMBLJS__jQuery}"/>
+<apex:includeScript value="{!URLFOR($Resource.GMBLJS__jQueryUI,'/jquery-ui/jquery-ui.min.js')}"/>
+<apex:includeScript value="{!URLFOR($Resource.GMBLJS__pqGridPro241,'/pqgrid.min.js')}"/>
+
+<apex:includeScript value="{!$Resource.GMBLJS__accountingJS}"/>
+<apex:includeScript value="{!$Resource.GMBLJS__ExcellentExport}"/>
+
+<apex:includeScript value="{!$Resource.GMBLJS__gsrSpinner}"/>
+<apex:includeScript value="{!$Resource.GMBLJS__gsrGrid2}"/>
+
+
+
+</head>
+<body>
+    <div style="margin:0 auto; width:95%">
+       <apex:form >
+            <div style="text-align:center;">
+                <br/>
+                <span id="spnTitle" style="font-size:large">Cash Receipt Application</span>
+                <br/><br/>
+            </div>
+            <br/>
+                        
+            <apex:pageBlock >
+                <apex:pageBlockButtons location="top">
+                    <button type="button" class="btn" id="btnSave" onclick="fn_SaveInvoiceGrid();">Save</button>
+                    <button type="button" class="btn" id="btnCancel" onclick="fn_CancelAll();">Cancel</button>
+                    <button type="button" class="btn" id="btnUSC" onclick="fn_DialogUSCImport();">Import USC Commission</button>
+                </apex:pageBlockButtons>
+
+
+                <table>
+                    <tr>
+                        <td style="text-align:left; vertical-align:top;" width="65%">
+                            <div id="grdReceipts" width="100%"></div>
+                        </td>
+                        <td width="2%"></td>
+                        <td style="text-align:left; vertical-align:top;" width="31%">
+                            
+
+                            <div id="divinstruct" class="displayon">
+                                <table class="list" width="75%" cellspacing="0" cellpadding="0" border="0" style="text-align: left;">
+                                    <tr class="headerRow" style="text-align: center;">
+                                        <th class="zen-deemphasize" scope="col" style="text-align: left;" colspan="2">
+                                            Instructions
+                                        </th>
+                                    </tr>
+                                    <tr>
+                                        <td width="15%" style="color:#0000EE; text-align:center; line-height:30px;">apply</td>
+                                        <td width="85%">Apply all or a portion of the unapplied balance of this cash receipt to an existing invoice line.</td>
+
+                                    </tr>   
+                                    <tr>
+                                        <td width="15%" style="color:#0000EE; text-align:center; line-height:30px;">credit</td>
+                                        <td width="85%">Create an AR credit memo with the remaining balance of this cash receipt.</td>
+                                    </tr>
+                                    <tr>
+                                        <td width="15%" style="color:#0000EE; text-align:center; line-height:30px;">refund</td>
+                                        <td width="85%">Create an account payable with the remaining balance.</td>
+                                    </tr>
+                                    <tr>
+                                        <td width="15%" style="color:#0000EE; text-align:center; line-height:30px;">revenue</td>
+                                        <td width="85%">Create an invoice and apply outstanding balance from cash receipt.</td>
+                                    </tr>
+                                </table>
+                            </div>
+                            
+                            <div id="divinstructapply" class="displayoff">
+                                <table class="list" width="70%" cellspacing="0" cellpadding="0" border="0" style="text-align: left;">
+                                    <tr class="headerRow" style="text-align: center;">
+                                        <th class="zen-deemphasize" scope="col" style="text-align: left;" colspan="2">
+                                            Color Legend
+                                        </th>
+                                    </tr>
+                                    <tr>
+                                        <td width="15%" style="text-align:center; line-height:30px;">WHITE</td>
+                                        <td width="85%">There are no unsaved changes.</td>
+
+                                    </tr>
+                                    <tr>
+                                        <td width="15%" style="text-align:center; background-color:#00FF00; line-height:30px;">GREEN</td>
+                                        <td width="85%">Highlights the Cash Receipt currently being applied to invoice lines.</td>
+                                    </tr>  
+                                    <tr>
+                                        <td width="15%" style="text-align:center; background-color:yellow; line-height:30px;">YELLOW</td>
+                                        <td width="85%">There are unsaved changes; click <span class="btn">Save</span> to commit the changes; click <span class="btn">Cancel</span> to abandon the changes.</td>
+                                    </tr>
+                                    <tr>
+                                        <td width="15%" style="text-align:center; background-color:red; line-height:30px;">RED</td>
+                                        <td width="85%">The value has unsaved changes that cannot be saved; fix the numbers before clicking "Save", or abandon the changes by clicking "Cancel" or browser refresh.  Example: the amount that is being applied to a billing line is greater than the billing line total.</td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </td>
+                        <td style="text-align:left; vertical-align:top;" width="2%"></td>
+                    </tr>
+                </table>
+                <input type="checkbox" id="chkAllReceipts" onchange="fn_refreshCashReceiptGrid(); return false;"></input> View all Cash Receipts
+                
+                <div id="dialog" title="Basic dialog">
+                    <p id="dialogtext"></p>
+                </div>
+
+                <div id="grdInvoices"></div>
+            </apex:pageBlock>       
+
+        </apex:form>
+    </div>
+    
+</body>
+
+<script>function setFocusOnLoad() {}</script>
+<script type="text/javascript">
+
+    $j = jQuery.noConflict();
+
+    var ASSIGNLEVEL = {
+        ANY : 0, 
+        BILL: 1,
+        LINE : 2
+    };
+
+    var idAccount = '{!$CurrentPage.parameters.id}';
+    var rowCashReceipt;
+    var rowInvoice;
+    var initialCashReceiptID = '{!$CurrentPage.parameters.srchIdCashReceipt}';
+    var idCashReceipt;
+    var idBill;
+    var ReceiptjData;
+    var InvoicejData;
+    var InvoiceLinejData;
+    var lstAdjustmentGLs;
+    var lstPeriods;
+    var DefaultAdjustmentGLName;
+    var DefaultAdjustmentGLId;
+    var DefaultPeriodName;
+    var DefaultPeriodId;
+    var PrevCRApplied;
+    var PrevCRUnapplied;
+    var CashReceiptEdit = true;
+
+    $j(document).ready(function()
+    {
+        idCashReceipt = initialCashReceiptID;
+
+        $j(document).tooltip();
+        fn_LoadlstAdjustmentGLs(true);
+
+    });
+
+    function fn_refreshAll()
+    {
+  
+        idCashReceipt = initialCashReceiptID;
+        var $gridReceipt = $j('#grdReceipts');
+        $gridReceipt.pqGrid("enable");   
+        $j('#btnSave').prop('disabled', true);
+        $j('#btnCancel').prop('disabled', true);
+        rowCashReceipt = null;
+        fn_LoadlstAdjustmentGLs(false);
+        //fn_refreshCashReceiptGrid();
+        //$j('#grdInvoices').pqGrid( "destroy" );
+        //fn_initInvoiceGrid();       
+        
+    }
+
+    accounting.settings = {
+        currency: {
+            symbol : "$",   // default currency symbol is '$'
+            format: "%s%v", // controls output: %s = symbol, %v = value/number (can be object: see below)
+            decimal : ".",  // decimal point separator
+            thousand: ",",  // thousands separator
+            precision : 2   // decimal places
+        },
+        number: {
+            precision : 0,  // default precision on numbers is 0
+            thousand: ",",
+            decimal : "."
+        }
+    }
+
+    function fn_ShowApplyInstructions(onn)
+    {
+        if (onn)
+        {
+            $j("#divinstruct").removeClass("displayon");
+            $j("#divinstruct").addClass("displayoff");
+            $j("#divinstructapply").removeClass("displayoff");
+            $j("#divinstructapply").addClass("displayon");
+        }
+        else
+        {
+            $j("#divinstruct").removeClass("displayoff");
+            $j("#divinstruct").addClass("displayon");
+            $j("#divinstructapply").removeClass("displayon");
+            $j("#divinstructapply").addClass("displayoff");
+        }
+    }
+
+
+    function formatcurrency(val) 
+    {
+
+        var cont = eval(val);
+        if (cont != null && !isNaN(cont))
+            return accounting.formatMoney(cont);
+        else
+            return '';
+    }
+
+    function fn_refreshReceiptGrid_callback($gridDiv, result)
+    {
+        //alert(JSON.stringify(result));
+        ReceiptjData = result;
+        $gridDiv.pqGrid('option','dataModel.data', ReceiptjData);
+        $gridDiv.pqGrid('refreshDataAndView');
+
+        var $gridDiv2 = $j('#grdInvoices');
+        InvoicejData = [];
+        $gridDiv2.pqGrid('option','dataModel.data', InvoicejData);
+        $gridDiv2.pqGrid('refreshDataAndView');
+       
+    }
+
+    function fn_refreshCashReceiptGrid()
+    {
+        var $gridDiv = $j('#grdReceipts');
+
+        idCashReceipt = initialCashReceiptID;
+
+        $gridDiv.pqGrid('showLoading')
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.gcApplyCashReceipt.LoadCashReceipts}',
+            idAccount, idCashReceipt, $j('#chkAllReceipts').prop('checked'),
+            function(result,event){if(event.status){fn_refreshReceiptGrid_callback($gridDiv,result); $gridDiv.pqGrid('hideLoading')} else {alert(event.message); $gridDiv.pqGrid('hideLoading')}},
+            {buffer:true, escape:true, timeout:120000});   
+    
+    }
+
+    function fn_initCashReceiptGrid()
+    {
+        
+        var gridObj = {title:"Cash Receipts",
+                        collapsible:{on:false,collapsed:false,editable:false,toggle:false},
+                        columnTemplate: {sortable:true},
+                        dragColumns:{enabled:false},
+                        //dataModel:{data:ReceiptjData, location:'local', sorting:'local', sortDir:'up', sortIndx:'ReceiptDate'},
+                        dataModel:{data:ReceiptjData, location:'local', sorting:'local'},
+                        editable:true,
+                        filterModel:{on:false, mode:'AND', header:false},
+                        freezeCols:0,
+                        freezeRows:0,
+                        height:200,
+                        historyModel:{on:false},
+                        hoverMode:'row',
+                        hwrap:false,
+                        numberCell:{show:false},
+                        pageModel: {type:null},
+                        pasteModel:{on:false},
+                        resizable: false,
+                        roundCorners: false,
+                        scrollModel: {autoFit:true},
+                        selectionModel: { type: 'single'},
+                        showBottom:true,
+                        showHeader:true,
+                        showTitle:true,
+                        showTop:true,
+                        showToolbar:true,
+                        sortable:true,
+                        swipeModel:{on:false},
+                        virtualX: false,
+                        virtualY: false,
+                        width:1100,
+                        wrap:false}; 
+
+            gridObj.colModel=
+                [{dataIndx:'availableactions',  title:'Available Actions',      dataType: 'string', minWidth:200},
+                {dataIndx:'idCashReceipt',      title:'Id', hidden:true},
+                {dataIndx:'CashReceiptName',    title:'Cash Receipt',           dataType: 'string', width: 125},
+                {dataIndx:'AccountName',        title:'Account',                dataType: 'string', width: 250},
+                {dataIndx:'Reference',          title:'Reference',              dataType: 'string', width: 150},
+                {dataIndx:'ReceiptDate',        title:'Receipt Date',           dataType: 'string', width: 125},
+                {dataIndx:'decReceived',        title:'Received',   align:'right',dataType:'float', gFormat:'money', width: 125},
+                {dataIndx:'decAppliedNew',      title:'Applied',    align:'right', dataType:'float', gFormat:'money', width: 125},
+                {dataIndx:'decAppliedOld',      hidden:true},
+                {dataIndx:'decUnapplied',       title:'Unapplied',  align:'right', dataType:'float', gFormat:'money', width: 125},
+                {dataIndx:"scrollSpacer", minWidth:15, maxWidth:15}];
+            
+        //fnInitFormat(gridObj.colModel);
+        gGrid.initFormat(gridObj.colModel);
+        gGrid.initFilter(gridObj.colModel);
+
+ 
+        $j.each(gridObj.colModel, function(i,col)
+        {
+
+            if(col.dataIndx == 'availableactions')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        var myHTML='';
+                            myHTML += '&nbsp;&nbsp;<a title = \"Apply all or a portion of the unapplied balance of this cash receipt to an existing invoice line.\" class=\"lnk\" href=\"#\" onclick=\"fn_ApplyToInvoice(' + ui.rowIndx +')\">apply</a>&nbsp;';    
+                            myHTML += '&nbsp;&nbsp;<a title = \"Create a credit memo with the remaining balance of this cash receipt.\" class=\"lnk\" href=\"#\" onclick=\"fn_DialogCredit(' + ui.rowIndx +')\">credit</a>&nbsp;';
+                            myHTML += '&nbsp;&nbsp;<a title = \"Create an account payable with the remaining balance.\" class=\"lnk\" href=\"#\" onclick=\"fn_DialogRefund(' + ui.rowIndx +')\">refund</a>&nbsp;';     
+                            myHTML += '&nbsp;&nbsp;<a title = \"Create an invoice and apply outstanding balance from cash receipt.\" class=\"lnk\" href=\"#\" onclick=\"fn_DialogRevenue(' + ui.rowIndx +')\">revenue</a>&nbsp;';    
+
+                            
+                        return myHTML;
+                    }
+                });
+            }
+            else if(col.dataIndx == 'decAppliedNew')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+
+                        $j(this).pqGrid('removeClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'selectedCR'});
+                        $j(this).pqGrid('removeClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'highlight'});
+
+                        if (rowCashReceipt !=null)
+                        {
+                            if (ui.rowData.decAppliedNew != ui.rowData.decAppliedOld)
+                                $j(this).pqGrid('addClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'highlight'});
+                            else
+                                $j(this).pqGrid('addClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'selectedCR'});
+                        }
+
+                        return accounting.formatMoney(ui.rowData.decAppliedNew);
+                    }
+                });
+            }
+            else if(col.dataIndx == 'decUnapplied')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+
+
+                        $j(this).pqGrid('removeClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'selectedCR'});
+                        $j(this).pqGrid('removeClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'highlight'});
+                        $j(this).pqGrid('removeClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'errcolor'});
+
+                        if (rowCashReceipt !=null)
+                        {
+                            if (ui.rowData.decAppliedNew != ui.rowData.decAppliedOld)
+                            {
+                                if (ui.rowData.decUnapplied >= 0)
+                                    $j(this).pqGrid('addClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'highlight'});
+                                else
+                                    $j(this).pqGrid('addClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'errcolor'});
+                            }
+                            else 
+                                $j(this).pqGrid('addClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'selectedCR'});
+                        }
+                        return accounting.formatMoney(ui.rowData.decUnapplied);
+                    }
+                });
+            }
+            else if(col.dataIndx == 'ReceiptDate')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        var d = new Date(ui.rowData.ReceiptDate);
+                        return getFormattedDate(d);
+                    }
+                });
+            }
+
+        }); 
+
+
+        var $gridDiv = $j('#grdReceipts');
+        $gridDiv.pqGrid(gridObj);
+
+    }
+
+    function getFormattedDate(utc_date) {
+
+        var offset = new Date().getTimezoneOffset();
+        utc_date.setMinutes(utc_date.getMinutes() + offset);
+
+        var year = utc_date.getFullYear();
+        var month = (1 + utc_date.getMonth()).toString();
+        month = month.length > 1 ? month : '0' + month;
+        var day = utc_date.getDate().toString();
+        day = day.length > 1 ? day : '0' + day;
+        return month + '/' + day + '/' + year;  
+    }
+
+    function fn_LoadlstAdjustmentGLs_callback(result, initgrids)
+    {
+
+        lstAdjustmentGLs = result;
+        lstAdjustmentGLs.forEach(function(e) {
+            if (e.name == '4900-Customer Payment Discounts'){
+                DefaultAdjustmentGLName= e.name;
+                DefaultAdjustmentGLId = e.id;
+            }
+        });
+
+        fn_LoadlstPeriods(initgrids);      
+    }
+
+    function fn_LoadlstPeriods_callback(result, initgrids)
+    {
+
+        lstPeriods = result;
+
+        if (lstPeriods.length > 1){
+            DefaultPeriodName = lstPeriods[1].name;  
+            DefaultPeriodId = lstPeriods[1].id;  
+        }
+
+        if (initgrids)
+        {
+            fn_initCashReceiptGrid();
+            fn_initInvoiceGrid();
+        }
+        
+        fn_refreshCashReceiptGrid();
+    }
+
+    function fn_LoadlstAdjustmentGLs(initgrids)
+    {
+    
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.gcApplyCashReceipt.retrieveAdjustmentGL}',
+            function(result,event){if(event.status){fn_LoadlstAdjustmentGLs_callback(result, initgrids)} else {alert(event.message); $gridDiv.pqGrid('hideLoading')}},
+            {buffer:true, escape:true, timeout:120000});   
+    
+    }
+
+    function fn_LoadlstPeriods(initgrids)
+    {
+    
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.gcApplyCashReceipt.retrievePeriods}',
+            function(result,event){if(event.status){fn_LoadlstPeriods_callback(result, initgrids)} else {alert(event.message); $gridDiv.pqGrid('hideLoading')}},
+            {buffer:true, escape:true, timeout:120000});   
+    
+    }
+
+    function fn_ApplyToInvoice(rowid)
+    {
+        
+        rowCashReceipt = rowid;
+        CashReceiptEdit = false;
+
+        var $gridReceipt = $j('#grdReceipts');
+
+        $gridReceipt.pqGrid('addClass', {rowIndx: rowid, dataIndx:'availableactions',cls: 'selectedCR'});
+        $gridReceipt.pqGrid('addClass', {rowIndx: rowid, dataIndx:'CashReceiptName',cls: 'selectedCR'});
+        $gridReceipt.pqGrid('addClass', {rowIndx: rowid, dataIndx:'AccountName',cls: 'selectedCR'});
+        $gridReceipt.pqGrid('addClass', {rowIndx: rowid, dataIndx:'Reference',cls: 'selectedCR'});
+        $gridReceipt.pqGrid('addClass', {rowIndx: rowid, dataIndx:'ReceiptDate',cls: 'selectedCR'});
+        $gridReceipt.pqGrid('addClass', {rowIndx: rowid, dataIndx:'decReceived',cls: 'selectedCR'});
+        $gridReceipt.pqGrid('addClass', {rowIndx: rowid, dataIndx:'decAppliedNew',cls: 'selectedCR'});
+        $gridReceipt.pqGrid('addClass', {rowIndx: rowid, dataIndx:'decUnapplied',cls: 'selectedCR'});
+
+        $gridReceipt.pqGrid("disable");   
+        
+        idCashReceipt =  ReceiptjData[rowid].idCashReceipt;
+
+        $j('#btnSave').prop('disabled', false);
+        $j('#btnCancel').prop('disabled', false);
+
+        fn_ShowApplyInstructions(true);
+
+        fn_refreshInvoiceGrid(idCashReceipt,idAccount);
+
+    }
+
+    function fn_DialogUSCImport()
+    {
+
+        var $dialogDiv = $j('<div></div>');
+      
+        var html = '<p>Please select a UC Commission file for import.  The file will be processed, but you will have a';
+            html += ' chance to review the results before saving.</p><br/>';
+            html += ' <br/>';
+            html += ' <div id="divImportCommission">';
+            html += ' <input type="file" id="fileSelect" onchange="fn_ImportCommissionFile();" />';
+            html += ' <br/><br/><div><div id="grdImportCommission"></div></div>';
+            html += ' <br/>';
+            html += ' <span id="results" class="blue"></span>';
+            html += ' </div>';
+            html += ' <br/>';
+            html += '<table style=\"width:50%; border-collapse:collapse;\" >';
+
+            html += '<br/><br/>';
+            html += '<tr><td width="20%" class="border1 center top font2"><span class="headerLabel" style="font-weight:bold"></span>';
+            html += '</td><td width="10%" class="border1 center top font2"><span class="headerLabel" style="font-weight:bold">Matched</span></td>';
+            html += '<td width="10%" class="border1 center top font2"><span class="headerLabel" style="font-weight:bold">Unmatched</span></td></tr>';
+
+            html += '<tr><td width="20%" class="border1 left top font2"><span>Sales Order Lines</span></td>';
+            html += '<td width="10%" class="border1 right top font2"><span  class="right">55</span></td>';   
+            html += '<td width="10%" class="border1 right top font2"><span  class="right">24</span></td></tr>';
+
+            html += '<tr><td width="20%" class="border1 left top font2"><span>Total Dollars</span></td>';
+            html += '<td width="10%" class="border1 right top font2"><span class="right">$43.44</span></td>';   
+            html += '<td width="10%" class="border1 right top font2"><span  class="right">$22.24</span></td></tr>';
+            html += '<br/>';
+
+        var $table = $j(html);
+        $table.find('td').css({'white-space':'nowrap'});
+        
+        $dialogDiv.append($table);
+
+        $dialogDiv.dialog({autoOpen: false, height: 400, width: 700, modal: true,
+            close:function(){$dialogDiv.dialog('destroy'); $dialogDiv.remove();},
+            //open:function(){fn_InitRevenueGL(); },
+
+            title: 'Import US Compounding commission file...',
+            buttons: {
+                Proceed: function () {
+                    alert('Save results');
+                    // var GLAccount = $j("#selectRevenueGL").val();
+                    // var Amount = $j("#inputAmount").val();
+                    // var Comment = $j("#txtComment").val();
+
+                    // if (Amount == '0' || Amount == '' || isNaN(Amount))
+                    //     alert('Amount must be a valid positive number.');
+                    // else if (Amount > ReceiptjData[rowid].decUnapplied)
+                    //     alert('Amount must be less than or equal to the remaining balance on the Cash Receipt.');
+                    // else if (GLAccount == '' || GLAccount == null)
+                    //     alert('A General Ledger account must be selected.');
+                    // else {
+                    //     $dialogDiv.dialog('close');
+                    //     fn_CRToRevenue(rowid, GLAccount, Amount, Comment);
+                    // }
+                },
+                Cancel: function () {
+                    $j(this).dialog('close');
+                }
+            }
+        });
+
+        $dialogDiv.dialog('open');
+
+    }        
+
+    function fn_DialogRevenue(rowid)
+    {
+
+        var $dialogDiv = $j('<div></div>');
+      
+        var html = '<p>Select the amount and General Ledger account to use when applying this Cash Receipt to revenue.  The amount can be any amount up to the';
+            html += ' remaining balance of the Cash Receipt.  Proceeding will result in an invoice being created for ' + ReceiptjData[rowid].AccountName;
+            html += ' in the amount entered. This invoice will then be posted and the Cash Receipt will be applied to the newly created invoice.</p><br/>';
+            html += '<table style=\"width:100%\">';
+            html +=         '<tr>';
+            html +=         '<td style=\"width:15%\">Amount:&nbsp;&nbsp;</td>';
+            html +=             '<td style=\"width:85%\";\"font-weight:bold\"><input type=\"text\" onClick=\"this.select();\" id=\"inputAmount\" size=\"10\"{ /></td>';
+            html +=         '</tr>';        
+            html +=         '<tr>';
+            html +=         '<td>GL Account:&nbsp;&nbsp;</td>';
+            html +=         '<td>';
+            html +=             '<select id=\"selectRevenueGL\" style=\"width:100%\">';
+            html +=             '</select>';
+            html +=         '</td>';
+            html +=         '</tr>';
+            html +=         '<tr>';
+            html +=         '<td style=\"vertical-align:top\"> Comments:&nbsp;&nbsp;</td>';
+            html +=         '<td>';
+            html +=             '<textarea id=\"txtComment\" rows=\"4\" cols=\"75\" maxlength=\"255\"></textarea>';
+            html +=             '</select>';
+            html +=         '</td>';
+            html +=         '</tr>';
+            html += '<table><br/>';
+
+        var $table = $j(html);
+        $table.find('td').css({'white-space':'nowrap'});
+        
+        $dialogDiv.append($table);
+
+        $dialogDiv.dialog({autoOpen: false, height: 400, width: 700, modal: true,
+            close:function(){$dialogDiv.dialog('destroy'); $dialogDiv.remove();},
+            open:function(){fn_InitRevenueGL(); 
+                $j("#inputAmount").val(ReceiptjData[rowid].decUnapplied);
+                $j("#txtComment").val('Created with apply to revenue from Cash Receipt ' + ReceiptjData[rowid].CashReceiptName +'.');},
+            title: 'Apply to Revenue',
+            buttons: {
+                Proceed: function () {
+                    var GLAccount = $j("#selectRevenueGL").val();
+                    var Amount = $j("#inputAmount").val();
+                    var Comment = $j("#txtComment").val();
+
+                    if (Amount == '0' || Amount == '' || isNaN(Amount))
+                        alert('Amount must be a valid positive number.');
+                    else if (Amount > ReceiptjData[rowid].decUnapplied)
+                        alert('Amount must be less than or equal to the remaining balance on the Cash Receipt.');
+                    else if (GLAccount == '' || GLAccount == null)
+                        alert('A General Ledger account must be selected.');
+                    else {
+                        $dialogDiv.dialog('close');
+                        fn_CRToRevenue(rowid, GLAccount, Amount, Comment);
+                    }
+                },
+                Cancel: function () {
+                    $j(this).dialog('close');
+                }
+            }
+        });
+
+        $dialogDiv.dialog('open');
+
+    }        
+
+    function fn_InitRevenueGL()
+    {
+
+        var listItems= "";
+        lstAdjustmentGLs.forEach(function(e) 
+        {
+            listItems+= "<option value='" + e['id'] + "'>" + e['name'] + "</option>";
+        });
+        
+        $j("#selectRevenueGL").html(listItems);
+
+        $j("#selectRevenueGL").children().filter(function() {
+        return $j(this).text() == '4000-Distribution Product Revenue';}).prop('selected', true);
+    }
+
+    function fn_CRToRevenue(rowid, GLAccount, Amount, Comment)
+    {
+        gSpinner.show();
+        idCashReceipt =  ReceiptjData[rowid].idCashReceipt;
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.gcApplyCashReceipt.crToRevenue}',
+            idCashReceipt, GLAccount, Amount, Comment,
+            function(result,event){if(event.status){gSpinner.hide(); fn_refreshAll();} else {alert(event.message); gSpinner.hide();}},
+            {buffer:true, escape:true, timeout:120000});
+    }
+
+    function fn_DialogRefund(rowid)
+    {
+
+        var $dialogDiv = $j('<div></div>');
+      
+        var html = '<p>Select the amount and General Ledger account to use when creating a refund for this Cash Receipt.  The amount can be any amount up to the';
+            html += ' remaining balance of the Cash Receipt.  Proceeding will result in an account payable being created for ' + ReceiptjData[rowid].AccountName;
+            html += ' in the amount entered. The account payable will then be ready for distribution.</p><br/>';
+            html += '<table style=\"width:100%\">';
+            html +=         '<tr>';
+            html +=         '<td style=\"width:15%\">Amount:&nbsp;&nbsp;</td>';
+            html +=             '<td style=\"width:85%\";\"font-weight:bold\"><input type=\"text\" onClick=\"this.select();\" id=\"inputAmount\" size=\"10\"{ /></td>';
+            html +=         '</tr>';        
+            html +=         '<tr>';
+            html +=         '<td>GL Account:&nbsp;&nbsp;</td>';
+            html +=         '<td>';
+            html +=             '<select id=\"selectRefundGL\" style=\"width:100%\">';
+            html +=             '</select>';
+            html +=         '</td>';
+            html +=         '</tr>';
+            html +=         '<tr>';
+            html +=         '<td style=\"vertical-align:top\"> Comments:&nbsp;&nbsp;</td>';
+            html +=         '<td>';
+            html +=             '<textarea id=\"txtComment\" rows=\"4\" cols=\"75\" maxlength=\"255\"></textarea>';
+            html +=             '</select>';
+            html +=         '</td>';
+            html +=         '</tr>';
+            html += '<table><br/>';
+
+        var $table = $j(html);
+        $table.find('td').css({'white-space':'nowrap'});
+        
+        $dialogDiv.append($table);
+
+        $dialogDiv.dialog({autoOpen: false, height: 400, width: 700, modal: true,
+            close:function(){$dialogDiv.dialog('destroy'); $dialogDiv.remove();},
+            open:function(){fn_InitRefundGL(); 
+                $j("#inputAmount").val(ReceiptjData[rowid].decUnapplied);
+                $j("#txtComment").val('Created with apply to refund from Cash Receipt ' + ReceiptjData[rowid].CashReceiptName + '.');},
+            title: 'Apply to Revenue',
+            title: 'Create Refund',
+            buttons: {
+                Proceed: function () {
+                    var GLAccount = $j("#selectRefundGL").val();
+                    var Amount = $j("#inputAmount").val();
+                    var Comment = $j("#txtComment").val();
+
+                    if (Amount == '0' || Amount == '' || isNaN(Amount))
+                        alert('Amount must be a valid positive number.');
+                    else if (Amount > ReceiptjData[rowid].decUnapplied)
+                        alert('Amount must be less than or equal to the remaining balance on the Cash Receipt.');
+                    else if (GLAccount == '' || GLAccount == null)
+                        alert('A General Ledger account must be selected.');
+                    else {
+                        $dialogDiv.dialog('close');
+                        fn_CRToRefund(rowid, GLAccount, Amount, Comment);
+                    }
+                },
+                Cancel: function () {
+                    $j(this).dialog('close');
+                }
+            }
+        });
+
+        $dialogDiv.dialog('open');
+
+    }
+
+    function fn_InitRefundGL()
+    {
+
+        var listItems= "";
+        lstAdjustmentGLs.forEach(function(e) 
+        {
+            listItems+= "<option value='" + e['id'] + "'>" + e['name'] + "</option>";
+        });
+        
+        $j("#selectRefundGL").html(listItems);
+
+        $j("#selectRefundGL").children().filter(function() {
+        return $j(this).text() == '2020-Accrued Expenses';}).prop('selected', true);
+    }
+
+    function fn_CRToRefund(rowid, GLAccount, Amount, Comment)
+    {
+        gSpinner.show();
+    
+        idCashReceipt =  ReceiptjData[rowid].idCashReceipt;
+
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.gcApplyCashReceipt.crToRefund}',
+            idCashReceipt, GLAccount, Amount, Comment,
+            function(result,event){if(event.status){gSpinner.hide();fn_refreshAll();} else {alert(event.message); gSpinner.hide();}},
+            {buffer:true, escape:true, timeout:120000});
+    }
+
+    function fn_DialogCredit(rowid)
+    {
+
+        var $dialogDiv = $j('<div></div>');
+      
+        var html = '<p>Select the amount and General Ledger account to use when creating a credit memo for this Cash Receipt.  The amount can be any amount up to the';
+            html += ' remaining balance of the Cash Receipt.  Proceeding will result in a credit memo being created for ' + ReceiptjData[rowid].AccountName;
+            html += ' in the amount entered. This credit memo will then be available to apply to new or existing invoices for this account.</p><br/>';
+            html += '<table style=\"width:100%\">';
+            html +=         '<tr>';
+            html +=         '<td style=\"width:15%\">Amount:&nbsp;&nbsp;</td>';
+            html +=             '<td style=\"width:85%\";\"font-weight:bold\"><input type=\"text\" onClick=\"this.select();\" id=\"inputAmount\" size=\"10\"{ /></td>';
+            html +=         '</tr>';        
+            html +=         '<tr>';
+            html +=         '<td>GL Account:&nbsp;&nbsp;</td>';
+            html +=         '<td>';
+            html +=             '<select id=\"selectCreditGL\" style=\"width:100%\">';
+            html +=             '</select>';
+            html +=         '</td>';
+            html +=         '</tr>';
+            html +=         '<tr>';
+            html +=         '<td style=\"vertical-align:top\"> Comments:&nbsp;&nbsp;</td>';
+            html +=         '<td>';
+            html +=             '<textarea id=\"txtComment\" rows=\"4\" cols=\"75\" maxlength=\"255\"></textarea>';
+            html +=             '</select>';
+            html +=         '</td>';
+            html +=         '</tr>';
+            html += '<table><br/>';
+
+        var $table = $j(html);
+        $table.find('td').css({'white-space':'nowrap'});
+        
+        $dialogDiv.append($table);
+
+        $dialogDiv.dialog({autoOpen: false, height: 400, width: 700, modal: true,
+            close:function(){$dialogDiv.dialog('destroy'); $dialogDiv.remove();},
+            open:function(){fn_InitCreditGL(); 
+                $j("#inputAmount").val(ReceiptjData[rowid].decUnapplied);
+                $j("#txtComment").val('Created with apply to credit memo from Cash Receipt ' + ReceiptjData[rowid].CashReceiptName +'.');},
+            title: 'Apply to Revenue',
+            title: 'Create Credit Memo',
+            buttons: {
+                Proceed: function () {
+                    var GLAccount = $j("#selectCreditGL").val();
+                    var Amount = $j("#inputAmount").val();
+                    var Comment = $j("#txtComment").val();
+        
+                    if (Amount == '0' || Amount == '' || isNaN(Amount))
+                        alert('Amount must be a valid positive number.');
+                    else if (Amount > ReceiptjData[rowid].decUnapplied)
+                        alert('Amount must be less than or equal to the remaining balance on the Cash Receipt.');
+                    else if (GLAccount == '' || GLAccount == null)
+                        alert('A General Ledger account must be selected.');
+                    else {
+                        $dialogDiv.dialog('close');
+                        fn_CRToCredit(rowid, GLAccount, Amount, Comment);
+                    }
+                },
+                Cancel: function () {
+                    $j(this).dialog('close');
+                }
+            }
+        });
+
+        $dialogDiv.dialog('open');
+    }        
+
+    function fn_InitCreditGL()
+    {
+
+        var listItems= "";
+        lstAdjustmentGLs.forEach(function(e) 
+        {
+            listItems+= "<option value='" + e['id'] + "'>" + e['name'] + "</option>";
+        });
+        
+        $j("#selectCreditGL").html(listItems);
+
+        $j("#selectCreditGL").children().filter(function() {
+        return $j(this).text() == '3900-Adjustments';}).prop('selected', true);
+    }
+
+    function fn_CRToCredit(rowid, GLAccount, Amount, Comment)
+    {
+        gSpinner.show();
+    
+        idCashReceipt =  ReceiptjData[rowid].idCashReceipt;
+
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.gcApplyCashReceipt.createCreditMemo}',
+            idCashReceipt, GLAccount, Amount, Comment, 
+            function(result,event){if(event.status){gSpinner.hide();fn_refreshAll();} else {alert(event.message); gSpinner.hide();}},
+            {buffer:true, escape:true, timeout:120000});
+    }
+
+    function fn_refreshInvoiceGrid(idCashReceipt, idAccount){
+
+
+        // if ()
+        // //alert(JSON.stringify(result));
+        // ReceiptjData = result;
+        // $gridDiv.pqGrid('option','dataModel.data', ReceiptjData);
+        // $gridDiv.pqGrid('refreshDataAndView');
+
+        // var $gridDiv2 = $j('#grdInvoices');
+        // InvoicejData = [];
+        // $gridDiv2.pqGrid('option','dataModel.data', InvoicejData);
+        // $gridDiv2.pqGrid('refreshDataAndView');
+
+        var $gridDiv = $j('#grdInvoices');
+        $gridDiv.pqGrid('showLoading');
+        
+        //$gridDiv.pqGrid("enable"); 
+
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.gcApplyCashReceipt.RetrieveBills}',
+            idCashReceipt, idAccount, 
+            function(result,event){if(event.status){fn_refreshInvoiceGrid_callback($gridDiv,result); $gridDiv.pqGrid('hideLoading');} else {alert(event.message); $gridDiv.pqGrid('hideLoading');}},
+            {buffer:true, escape:true, timeout:120000});
+    }
+
+    function fn_refreshInvoiceGrid_callback($gridDiv, result)
+    {
+         //alert(JSON.stringify(result));
+        InvoicejData = result;
+        $gridDiv.pqGrid('option','dataModel', {data:InvoicejData, sorting:'local', location:'local'});
+        $gridDiv.pqGrid('refreshDataAndView');
+
+    }
+
+    function fn_SaveInvoiceGrid()
+    {
+        if (ReceiptjData[rowCashReceipt].decUnapplied < 0) {
+            alert('The current edits would result in a negative balance for the Cash Receipt. Please cancel or modify the edits before saving.')
+            return;
+        }
+
+        var foundone = false;
+        var jData=new Array();
+     
+        gSpinner.show();
+
+        InvoicejData.forEach(function(e) {
+            delete e['pq_cellcls'];
+            if(e.decAppliedNew != e.decAppliedOld || e.idPeriodOld != e.idPeriodNew || e.idAdjustmentGLOld != e.idAdjustmentGLNew || e.decAdjustedOld != e.decAdjustedNew)
+            {
+                jData.push(e);
+                foundone = true;
+            }
+        });   
+
+        if(!foundone)
+        {
+            var dialogMsg = 'Data is unchanged, no save is needed.'
+            $j("#dialog").attr('title', 'Save');
+            $j("#dialogtext").html(dialogMsg);
+            $j("#dialog").dialog({autoOpen: false, height:150, width: 300, modal: true,
+            buttons: {
+                Close: function() {
+                    $j(this).dialog("close");
+                }}
+            });
+            $j("#dialog").dialog("open");
+            gSpinner.hide();
+            return;
+        }
+
+
+
+        fn_ShowApplyInstructions(false);
+
+        //alert(JSON.stringify(jData));
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.gcApplyCashReceipt.SaveBills}',
+            idCashReceipt,jData,
+            function(result,event){if(event.status){gSpinner.hide(); fn_refreshAll();} else {alert(event.message); gSpinner.hide();}},
+            {buffer:true, escape:true, timeout:120000}
+        );
+    }
+
+    function fn_CancelAll()
+    {
+    
+        var $gridReceipt = $j('#grdReceipts');
+        $gridReceipt.pqGrid("enable");   
+        
+        $j('#btnSave').prop('disabled', true);
+        $j('#btnCancel').prop('disabled', true);
+        
+        fn_ShowApplyInstructions(false);
+        fn_refreshAll();    
+    }
+
+    function fn_initInvoiceGrid()
+    {
+    
+        var gridObj = {title:"Invoices",
+                        collapsible:{on:false,collapsed:false,editable:false,toggle:false},
+                        columnTemplate: {sortable:true},
+                        dragColumns:{enabled:false},
+                        //dataModel:{data:jData[], location:'local', sorting:'local', sortIndx:['SOP_Number__c','Invoice_Date__c', sortDir:['up','up']},
+                        //dataModel:{data:InvoicejData, location:'local', sorting:'local'},
+                        //create: function (evt, ui) {$j(this).pqTooltip();},
+                        editable:true,
+                        filterModel:{on:false, mode:'AND', header:false},
+                        freezeCols:0,
+                        freezeRows:0,
+                        height:400,
+                        historyModel:{on:false},
+                        hoverMode:'row',
+                        hwrap:false,
+                        numberCell:{show:false},
+                        pageModel: {type:null},
+                        pasteModel:{on:false},
+                        resizable: true,
+                        roundCorners: false,
+                        scrollModel: {autoFit:true},
+                        selectionModel: { type: 'null'},
+                        showBottom:true,
+                        showHeader:true,
+                        showTitle:true,
+                        showTop:true,
+                        showToolbar:true,
+                        sortable:true,
+                        swipeModel:{on:false},
+                        virtualX: false,
+                        virtualY: false,
+                        width:'100%',
+                        wrap:false}; 
+
+            gridObj.colModel=
+                [{dataIndx:'Details',           title: "", minWidth: 35, width: 35, resizable: false},
+                {dataIndx:'idBill',             hidden:true},
+                {dataIndx:'BillingName',        title:'Billing',            dataType: 'string', width: 110, editable: false},
+                {dataIndx:'BillDate',           title:'Bill Date',          dataType: 'string', width: 110, editable: false},
+                {dataIndx:'BillingCustomer',    title:'Billing Customer',   dataType: 'string', width: 190, editable: false},
+                {dataIndx:'OrderCustomer',      title:'Order Customer',     dataType: 'string', width: 190, editable: false},
+                {dataIndx:'PONumber',           title:'PO Number',          dataType: 'string', width: 110, editable: false},
+                {dataIndx:'decTotalCost',       title:'Total Cost',     	align:'right', dataType:'float', gFormat:'money', width: 110, editable: false},
+                {dataIndx:'decAppliedOther',    title:'Other&nbsp;<br/>Receipts',  	align:'right', dataType:'float', gFormat:'money', width: 110, editable: false},
+                {dataIndx:'decAdjustedOther',   title:'Other&nbsp;<br/>Adjustments',align:'right', dataType:'float', gFormat:'money', width: 110, editable: false},
+                {dataIndx:'decCreditMemo',      title:'Credit Memo',        align:'right', dataType:'float', gFormat:'money', width: 125, editable: false},
+                {dataIndx:'decAppliedNew',      title:'This Receipt',   	align:'right', dataType:'float', gFormat:'money', width: 110}, 
+                {dataIndx:'Apply',              title:'',                   align:'center', width: 110, editable: false},
+                {dataIndx:'decBalance',         title:'Balance',            align:'right', dataType:'float', gFormat:'money', width: 110, editable: false},
+                {dataIndx:'idPeriodNew',  hidden:true},
+                {dataIndx:'PeriodName', title: "Period", width: 110, align:'left',
+                    editable: function (ui) {return (!ui.rowData.PeriodClosed && ui.rowData.assignLevelNew != ASSIGNLEVEL.LINE);},
+                    editor: {
+                        type: "select",
+                        //init: function (ui) {
+                        //   ui.$cell.find("select").pqSelect();
+                        //},
+                        valueIndx:'id',
+                        labelIndx:'name',
+                        options: lstPeriods,
+                        mapIndices: {"name": "PeriodName", "id": "idPeriodNew"}
+                }},
+                {dataIndx:'decAdjustedNew',     title:'Adjustment&nbsp;<br/>Amount',          align:'right', dataType:'float', gFormat:'money', width: 110},
+                {dataIndx:'idAdjustmentGLNew',  hidden:true},
+                {dataIndx: "AdjustmentGLName", title: "Adjustment GL", width: 225,
+                    editable: function (ui) {return (!ui.rowData.PeriodClosed && ui.rowData.assignLevelNew != ASSIGNLEVEL.LINE);},
+                    editor: {
+                        type: "select",
+                        init: function (ui) {
+                           // ui.$cell.find("select").pqSelect();
+                        },
+                        valueIndx:'id',
+                        labelIndx:'name',
+                        options: lstAdjustmentGLs,
+                        mapIndices: {"name": "AdjustmentGLName", "id": "idAdjustmentGLNew"}
+                }},
+                {dataIndx:'assignLevelNew',      hidden:true},
+                {dataIndx:'PeriodClosed',       hidden:true},
+                {dataIndx:"scrollSpacer",       minWidth:15, maxWidth:15}];
+        
+
+        gGrid.initFormat(gridObj.colModel);
+        //gGrid.initFilter(gridObj.colModel); 
+
+ 
+        $j.each(gridObj.colModel, function(i,col)
+        {
+
+            if(col.dataIndx == 'Apply')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+
+                        var myHTML='';
+                        if (ui.rowData.PeriodClosed || ui.rowData.assignLevelNew == ASSIGNLEVEL.LINE){
+                            $j(this).pqGrid('addClass',{rowIndx:ui.rowIndx, cls:'rowlocked'});
+                            return '';
+                        }
+                        else
+                            if (ui.rowData.decBalance == 0 && ui.rowData.decAppliedNew != 0)
+                                myHTML = '<button type="button" onclick=\"fn_UnapplyBalance(' + ui.rowIndx +')"><img src="{!URLFOR($Resource.gImages,'/arrowright.jpg')}"/></button>';
+                            else if (ui.rowData.decBalance != 0)
+                                myHTML = '<button type="button" onclick=\"fn_ApplyBalance(' + ui.rowIndx +')"><img src="{!URLFOR($Resource.gImages,'/arrowleft.jpg')}"/></button>';      
+                            else
+                                myHTML = '';
+                        return myHTML;
+
+                    }
+                });
+            }
+
+            else if(col.dataIndx == 'BillingName')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.BillingName == null)
+                        {
+                            return '';
+                        }
+                        else{
+                            var $myObj = $j('<a>').html(ui.rowData.BillingName).attr('href','/'+ui.rowData.idBill).attr('target','_blank');
+                            return $j('<wrap>').append($myObj).html();
+                            //return '<a href=/' + ui.rowData.idBill + '>' + ui.rowData.BillingName + '</a>';
+                        }
+                    }
+                });
+            }
+
+            else if(col.dataIndx == 'Details')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        
+                        myHTML = '<button type="button" onclick="fn_launchInvoiceLines(\''+ui.rowData.idBill+'\', ' + ui.rowIndx + ','+ ui.rowData.assignLevelNew +');"><img src="{!URLFOR($Resource.gImages,'/Plus.jpg')}"/></button>';
+                        
+                        return myHTML;
+                    }
+                });
+            }
+
+            else if(col.dataIndx == 'decAdjustedNew')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        // if (!ui.rowData.PeriodClosed || ui.rowIndx.assignLevelNew != ASSIGNLEVEL.LINE)
+                        //     $j(this).pqGrid('addClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'link'});
+                                
+                        if (ui.rowData.decAdjustedNew == null || ui.rowData.decAdjustedNew == 0)
+                            return ''
+                        else
+                            return(accounting.formatMoney(ui.rowData.decAdjustedNew));
+                    },
+                    editable: function (ui) {return (!ui.rowData.PeriodClosed && ui.rowData.assignLevelNew != ASSIGNLEVEL.LINE);},
+                    editor:{type:'textbox', select: true},
+                    validations: [{ type: 'gte', value: 0, msg: "must be >= 0<br/>(escape to cancel)"},
+                    { type: function (ui) {
+                        if (ui.value > (ui.rowData.decTotalCost - ui.rowData.decAppliedOther - ui.rowData.decAdjustedOther - ui.rowData.decAppliedNew - ui.rowData.decCreditMemo)){
+                            ui.msg = "must be <= balance due<br/>(escape to cancel)";
+                            return false;
+                        }
+                    }}],
+                    editModel: { keyUpDown: true, filterKeys:false }
+                });             
+            }
+
+            else if(col.dataIndx == 'decAppliedNew')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+
+                        if (ui.rowData.decAppliedNew  != ui.rowData.decAppliedOld)
+                            $j(this).pqGrid('addClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'highlight'});
+                        else 
+                            $j(this).pqGrid('removeClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'highlight'});
+
+                        return accounting.formatMoney(ui.rowData.decAppliedNew);
+                    },
+                    editable: function (ui) {return (!ui.rowData.PeriodClosed && ui.rowData.assignLevelNew != ASSIGNLEVEL.LINE);},
+                    editor:{type:'textbox', select: true},
+                    validations: [{ type: 'gte', value: 0, msg: "must be >= 0<br/>(escape to cancel)"},
+                    { type: function (ui) {
+                        if (ui.value > (ui.rowData.decTotalCost - ui.rowData.decAppliedOther - ui.rowData.decAdjustedOther - ui.rowData.decAdjusteddNew - ui.rowData.decCreditMemo)){
+                            ui.msg = "must be <= balance due<br/>(escape to cancel)";
+                            return false;
+                        }
+                    }}],
+                    editModel: { keyUpDown: true, filterKeys:false }
+                });
+            }
+
+            // else if(col.dataIndx == 'BillDate')
+            // {
+            //     $j.extend(col,{
+            //         render:function(ui)
+            //         {
+            //             var d = new Date(ui.rowData.BillDate);
+            //             return getFormattedDate(d);
+            //         }
+            //     });
+            // }
+
+            else if(col.dataIndx == 'decAppliedOther')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        return accounting.formatMoney(ui.rowData.decAppliedOther);
+                    }
+                });
+            }
+
+            else if(col.dataIndx == 'decAdjustedOther')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        return accounting.formatMoney(ui.rowData.decAdjustedOther);
+                    }
+                });
+            }
+
+            else if(col.dataIndx == 'decCreditMemo')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        return accounting.formatMoney(ui.rowData.decCreditMemo);
+                    }
+                });
+            }
+
+            else if(col.dataIndx == 'decBalance')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if (ui.rowData.decAppliedNew  != ui.rowData.decAppliedOld)
+                            $j(this).pqGrid('addClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'highlight'});
+                        else 
+                            $j(this).pqGrid('removeClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'highlight'});
+
+                        return accounting.formatMoney(ui.rowData.decBalance);
+                    }
+                });
+            }
+        }); 
+
+        var $gridDiv = $j('#grdInvoices');
+        $gridDiv.pqGrid(gridObj);
+
+
+        //when cell editing begins, if there is no inventory, and no allocation, then there's nothing to do, so quit edit mode.
+        // $gridDiv.on('pqgrideditorbegin', function(event,ui)
+        // {
+        //     if(ui.dataIndx == 'decAppliedNew')
+        //     {
+        //         $j(this).pqGrid('getEditCell').$cell.find('input').val(accounting.formatNumber(ui.rowData.decAppliedNew));
+        //     }
+        // });
+
+        //if the new data is the same as the old data, then there's no reason to call the remote action, so quit edit mode.
+        $gridDiv.on('pqgridcellbeforesave', function(event,ui)
+        {
+            if(ui.dataIndx == 'decAppliedNew')
+            {
+                if(parseFloat(ui.rowData.decAppliedNew).toFixed(0) == parseFloat(ui.newVal).toFixed(0))
+                {
+                    $j(this).pqGrid('quitEditMode');
+                    return false;
+                }
+            }
+            else if(ui.dataIndx == 'decAdjustedNew')
+            {
+                if(parseFloat(ui.rowData.decAdjustedNew).toFixed(2) == parseFloat(ui.newVal).toFixed(2))
+                {
+                    $j(this).pqGrid('quitEditMode');
+                    return false;
+                }
+            }
+        });
+
+
+        $gridDiv.on('pqgridcellsave', function(event,ui)
+        {
+            if(ui.dataIndx == 'decAppliedNew')
+            {
+                var newval = parseFloat(ui.rowData.decAppliedNew).toFixed(2);
+                var oldval = parseFloat(ui.oldVal).toFixed(2);
+                var diff = oldval - newval;
+
+                if (newval == 0 && ui.rowData.decAdjustedNew == 0){
+                    InvoicejData[ui.rowIndx].PeriodName = '';
+                    InvoicejData[ui.rowIndx].idPeriodNew = '0';
+                    if (InvoicejData[ui.rowIndx].assignLevelNew = ASSIGNLEVEL.BILL)
+                        InvoicejData[ui.rowIndx].assignLevelNew = ASSIGNLEVEL.ANY;
+                }
+                else
+                {
+                    InvoicejData[ui.rowIndx].assignLevelNew = ASSIGNLEVEL.BILL;
+                    if (InvoicejData[ui.rowIndx].idPeriodNew == '0'){
+                        InvoicejData[ui.rowIndx].PeriodName = DefaultPeriodName;
+                        InvoicejData[ui.rowIndx].idPeriodNew = DefaultPeriodId;
+                        //alert(InvoicejData[ui.rowIndx].PeriodName);
+                        //alert(InvoicejData[ui.rowIndx].idPeriodNew);
+                    }
+                }
+
+                var $gridReceipt = $j('#grdReceipts');
+                var $gridInvoice = $j('#grdInvoices');
+
+                InvoicejData[ui.rowIndx].decBalance += diff;
+                ReceiptjData[rowCashReceipt].decAppliedNew -= diff;
+                ReceiptjData[rowCashReceipt].decUnapplied += diff;
+
+                
+                $gridInvoice.pqGrid( "refreshRow", {rowIndx:ui.rowIndx} );
+                $gridReceipt.pqGrid( "refreshRow", {rowIndx:rowCashReceipt} );
+
+            }
+            else if (ui.dataIndx == 'decAdjustedNew')
+            {
+                var newval = parseFloat(ui.rowData.decAdjustedNew).toFixed(2);
+                var oldval = parseFloat(ui.oldVal).toFixed(2);
+                var diff = oldval - newval;
+
+                if (newval == 0 && ui.rowData.decAppliedNew == 0)
+                {
+                    if (InvoicejData[ui.rowIndx].assignLevelNew = ASSIGNLEVEL.BILL)
+                        InvoicejData[ui.rowIndx].assignLevelNew = ASSIGNLEVEL.ANY;
+                    InvoicejData[ui.rowIndx].PeriodName = '';
+                    InvoicejData[ui.rowIndx].AdjustmentGLName = '';
+                    InvoicejData[ui.rowIndx].idPeriodNew = '0';
+                    InvoicejData[ui.rowIndx].idAdjustmentGLNew = '0';
+                }
+                else
+                { 
+                    InvoicejData[ui.rowIndx].assignLevelNew = ASSIGNLEVEL.BILL;
+                    if (InvoicejData[ui.rowIndx].idPeriodNew == '0'){
+                        InvoicejData[ui.rowIndx].PeriodName = DefaultPeriodName;
+                        InvoicejData[ui.rowIndx].idPeriodNew = DefaultPeriodId;
+                    }
+                    if (InvoicejData[ui.rowIndx].idAdjustmentGLNew == '0'){
+                        InvoicejData[ui.rowIndx].AdjustmentGLName = DefaultAdjustmentGLName;
+                        InvoicejData[ui.rowIndx].idAdjustmentGLNew = DefaultAdjustmentGLId;
+                    }
+                }
+                    
+                var $gridInvoice = $j('#grdInvoices');
+
+                InvoicejData[ui.rowIndx].decBalance += diff;
+                $gridInvoice.pqGrid( "refreshRow", {rowIndx:ui.rowIndx});
+            }
+        });
+
+
+    }
+
+    function fn_launchInvoiceLines(curIdBill, InvoiceRow, AssignmentLevel)
+    {
+
+        var Recdesc = '';
+        var InvoiceDirty = false;
+
+        InvoicejData.forEach(function(e) {
+            if(e.decAppliedNew != e.decAppliedOld || e.idPeriodOld != e.idPeriodNew || e.idAdjustmentGLOld != e.idAdjustmentGLNew || e.decAdjustedOld != e.decAdjustedNew)
+                InvoiceDirty = true;
+        });   
+        
+
+        idBill = curIdBill;
+        PrevCRApplied = ReceiptjData[rowCashReceipt].decAppliedNew;
+        PrevCRUnapplied = ReceiptjData[rowCashReceipt].decUnapplied;
+                    
+        if (AssignmentLevel == ASSIGNLEVEL.BILL){
+            Recdesc = '***One or more receipts have been applied to this invoice directly, so line item application is not available.  If ';
+            Recdesc += 'line item application is required then the invoice level applications must be cleared.';
+        }
+        else if (InvoiceDirty){
+            Recdesc = '***All invoice level edits must be saved before invoice lines are available for editing.';
+            AssignmentLevel = ASSIGNLEVEL.BILL;
+        }
+
+        var $dialogDiv = $j('<div id=\"divDialog\"></div>');
+        var $HeadingDiv = $j('<div id=\"divHeader\"><p>' + Recdesc + '</p></div>');
+        var $gridDiv = $j('<div id=\"divLineGrid\"></div>');
+        $dialogDiv.append($HeadingDiv);
+        $dialogDiv.append($gridDiv);
+
+        $dialogDiv.dialog({
+            autoOpen: false,
+            height: 400,
+            width: 1450,
+            modal: true,
+            position: { my: "center", at: "center", of: "#grdInvoices" },
+            close:function(){$gridDiv.pqGrid('destroy'); $gridDiv.remove(); $dialogDiv.dialog('destroy'); $dialogDiv.remove();},
+            open:function(){fn_refreshInvoiceLineGrid($gridDiv, idBill, AssignmentLevel);},
+            buttons: {
+                "Save": function() {
+                    if (ReceiptjData[rowCashReceipt].decUnapplied < 0) {
+                        alert('The current edits would result in a negative balance for the Cash Receipt. Please cancel or modify the edits before saving.')
+                        return;
+                    }
+                    gSpinner.show();
+                    fn_SaveLineItemGrid(InvoiceRow);
+                    $j(this ).dialog("close");
+                },
+                Cancel: function() {
+                    $j(this).dialog("close");
+                }
+            },
+            title: "Apply cash receipt to specific invoice lines"});
+
+        if (AssignmentLevel == ASSIGNLEVEL.BILL)
+            $j('.ui-dialog-buttonpane button:contains("Save")').button().hide();
+
+        $dialogDiv.dialog('open');
+
+    }
+
+    function fn_CancelLineItemGrid(InvoiceRow)
+    {
+        
+        ReceiptjData[rowCashReceipt].decAppliedNew = PrevCRApplied;
+        ReceiptjData[rowCashReceipt].decUnapplied = PrevCRUnapplied;
+
+        var $gridReceipt = $j('#grdReceipts');
+        $gridReceipt.pqGrid( "refreshRow", {rowIndx:rowCashReceipt} );
+
+    }
+
+    function fn_SaveLineItemGrid()
+    {
+    
+        var foundone = false;
+        InvoiceLinejData.forEach(function(e) {
+            delete e['pq_cellcls'];
+
+        });   
+
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.gcApplyCashReceipt.SaveBillLines}',
+            idCashReceipt, InvoiceLinejData,
+            function(result,event){if(event.status){gSpinner.hide(); fn_SaveLineItemGrid_callback(result);}else {alert(event.message); gSpinner.hide();}},
+            {buffer:true, escape:true, timeout:120000});
+    }
+
+    function fn_SaveLineItemGrid_callback(result)
+    {
+
+        fn_refreshInvoiceGrid(idCashReceipt,idAccount);
+        var $gridReceipt = $j('#grdReceipts');
+        
+        ReceiptjData[rowCashReceipt].decAppliedOld = ReceiptjData[rowCashReceipt].decAppliedNew;
+        $gridReceipt.pqGrid( "refreshRow", {rowIndx:rowCashReceipt} );
+    }
+
+    function fn_refreshInvoiceLineGrid($gridDiv, idBill, AssignmentLevel)
+    {
+
+        InvoiceLinejData = [];
+        fn_initGrid_InvoiceLines($gridDiv,AssignmentLevel);
+        $gridDiv.pqGrid('showLoading');
+        
+        //$gridDiv.pqGrid("enable"); 
+
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.gcApplyCashReceipt.RetrieveBillLines}',
+            idCashReceipt, idBill,
+            function(result,event){if(event.status){fn_refreshLineGrid_callback($gridDiv,result); $gridDiv.pqGrid('hideLoading');} else {alert(event.message); $gridDiv.pqGrid('hideLoading');}},
+            {buffer:true, escape:true, timeout:120000});
+    }
+
+    function fn_refreshLineGrid_callback($gridDiv, result, AssignmentLevel)
+    {
+        InvoiceLinejData = result;
+        $gridDiv.pqGrid('option','dataModel.data', InvoiceLinejData);
+        $gridDiv.pqGrid('refreshDataAndView');
+    }
+
+    function fn_initGrid_InvoiceLines($gridDiv,AssignmentLevel)
+    {
+        var gridObj = { title:"Invoice Lines",
+                        collapsible:{on:false,collapsed:false},
+                        columnTemplate: {sortable:true},
+                        //dataModel:{data:InvoiceLinejData, location:'local', sorting:'local'},
+                        dragColumns:{enabled:false},
+                        editable:true,
+                        filterModel:{on:false, mode:'AND', header:false},
+                        freezeCols:0,
+                        freezeRows:0,
+                        height:300,
+                        historyModel:{on:false},
+                        hoverMode:'row',
+                        hwrap:false,
+                        numberCell:{show:false},
+                        pageModel: {type:null},
+                        pasteModel:{on:false},
+                        resizable: true,
+                        roundCorners: false,
+                        scrollModel: {autoFit:true},
+                        selectionModel: { type: null},
+                        showBottom:false,
+                        showHeader:true,
+                        showTitle:false,
+                        showTop:true,
+                        showToolbar:false,
+                        sortable:true,
+                        swipeModel:{on:false},
+                        virtualX: false,
+                        //virtualXHeader: false,
+                        virtualY: false,
+                        width:1400,
+                        height:250,
+                        wrap:false};               
+        gridObj.colModel=
+               [{dataIndx:'idBillLine',  hidden:true},
+                {dataIndx:'BillLineName',title:'Billing Line',       dataType: 'string', width: 110, editable: false},
+                {dataIndx:'Product',        title:'Product',            dataType: 'string', width: 250, editable: false},
+                {dataIndx:'Lot',            title:'Lot',                dataType: 'string', width: 90, editable: false},
+                {dataIndx:'Quantity',            title:'Qty',            dataType:'float',  width: 90, gFormat:'number', align:'right', editable: false},
+                {dataIndx:'UnitCost',       title:'Unit Cost',      align:'right', dataType:'float', gFormat:'money', width: 110, editable: false},
+                {dataIndx:'decTotalCost',      title:'Total Cost',     align:'right', dataType:'float', gFormat:'money', width: 110, editable: false},
+                {dataIndx:'decAppliedOther',   title:'Other&nbsp;<br/>Receipts',  align:'right', dataType:'float', gFormat:'money', width: 110, editable: false},
+                {dataIndx:'decAdjustedOther',   title:'Other&nbsp;<br/>Adjustments',align:'right', dataType:'float', gFormat:'money', width: 110, editable: false},
+                {dataIndx:'decAppliedNew',     title:'This&nbsp;<br/>Receipt',   align:'right', dataType:'float', gFormat:'money', width: 110},
+                {dataIndx:'Apply',          title:'',               align:'center', width: 110, editable: false},
+                {dataIndx:'decBalance',         title:'Balance',    align:'right', dataType:'float', gFormat:'money', width: 110, editable: false},
+                {dataIndx:'idPeriodNew',  hidden:true},
+                {dataIndx:'PeriodName', title: "Period", width: 110,
+                    editable: function (ui) {return !ui.rowData.PeriodClosed && AssignmentLevel != ASSIGNLEVEL.BILL;},
+                    editor: {
+                        type: "select",
+                        init: function (ui) {
+                           ui.$cell.find("select").pqSelect();
+                        },
+                        valueIndx:'id',
+                        labelIndx:'name',
+                        options: lstPeriods,
+                        mapIndices: {"name": "PeriodName", "id": "idPeriodNew"}
+                }},
+                {dataIndx:'decAdjustedNew',     title:'Adjustment&nbsp;<br/>Amount', align:'right', dataType:'float', gFormat:'money', width: 110}, 
+                {dataIndx:'idAdjustmentGLNew',  hidden:true},
+                {dataIndx: "AdjustmentGLName", title: "Adjustment GL", width: 225,
+                     editable: function (ui) {return !ui.rowData.PeriodClosed && AssignmentLevel != ASSIGNLEVEL.BILL;},
+                    editor: {
+                        type: "select",
+                        init: function (ui) {
+                           // ui.$cell.find("select").pqSelect();
+                        },
+                        valueIndx:'id',
+                        labelIndx:'name',
+                        options: lstAdjustmentGLs,
+                        mapIndices: {"name": "AdjustmentGLName", "id": "idAdjustmentGLNew"}
+                }},
+                {dataIndx:'PeriodClosed',       hidden:true},
+                {dataIndx:"scrollSpacer",       minWidth:15, maxWidth:15}];
+
+        gGrid.initFormat(gridObj.colModel);
+        //gGrid.initFilter(gridObj.colModel);
+
+        $j.each(gridObj.colModel, function(i,col)
+        {
+
+            if(col.dataIndx == 'Apply')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        var myHTML='';
+                        if (ui.rowData.PeriodClosed || AssignmentLevel == ASSIGNLEVEL.BILL){
+                            $j(this).pqGrid('addClass',{rowIndx:ui.rowIndx, cls:'rowlocked'});
+                            return '';
+                        }
+                        else
+                            if (ui.rowData.decBalance == 0 && ui.rowData.decAppliedNew != 0)
+                                myHTML = '<button type="button" onclick=\"fn_UnapplyLineBalance(' + ui.rowIndx +')"><img src="{!URLFOR($Resource.gImages,'/arrowright.jpg')}"/></button>';
+                            else if (ui.rowData.decBalance != 0)
+                                myHTML = '<button type="button" onclick=\"fn_ApplyLineBalance(' + ui.rowIndx +')"><img src="{!URLFOR($Resource.gImages,'/arrowleft.jpg')}"/></button>';      
+                            else
+                                myHTML = '';
+                        return myHTML;
+                    }
+                });
+            }
+
+            else if(col.dataIndx == 'BillLineName')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.BillLineName == null)
+                        {
+                            return '';
+                        }
+                        else{
+                            var $myObj = $j('<a>').html(ui.rowData.BillLineName).attr('href','/'+ui.rowData.idBillLine).attr('target','_blank');
+                            return $j('<wrap>').append($myObj).html();
+                        }
+                    }
+                });
+            }
+
+            else if(col.dataIndx == 'decAdjustedNew')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                                
+                        if (ui.rowData.decAdjustedNew == null || ui.rowData.decAdjustedNew == 0)
+                            return ''
+                        else
+                            return(accounting.formatMoney(ui.rowData.decAdjustedNew));
+                    },
+                    editable: function (ui) {return (!ui.rowData.PeriodClosed && AssignmentLevel != ASSIGNLEVEL.BILL);},
+                    editor:{type:'textbox', select: true},
+                    validations: [{ type: 'gte', value: 0, msg: "must be >= 0<br/>(escape to cancel)"},
+                    { type: function (ui) {
+                        if (ui.value > (ui.rowData.decTotalCost - ui.rowData.decAppliedOther - ui.rowData.decAdjustedOther)){
+                            ui.msg = "must be <= balance due<br/>(escape to cancel)";
+                            return false;
+                        }
+                    }}],
+                    editModel: {clicksToEdit:1, pressToEdit:false, filterKeys:true, keyUpDown:false, saveKey:$j.ui.keyCode.ENTER}
+                });             
+            }
+
+            else if(col.dataIndx == 'decAppliedNew')
+            {
+
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if (ui.rowData.decAppliedNew  != ui.rowData.decAppliedOld)
+                            $j(this).pqGrid('addClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'highlight'});
+                        else 
+                            $j(this).pqGrid('removeClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'highlight'});
+
+                        return accounting.formatMoney(ui.rowData.decAppliedNew);
+                    },
+                    editable: function (ui) {return (!ui.rowData.PeriodClosed && AssignmentLevel != ASSIGNLEVEL.BILL);},
+                    editor:{type:'textbox', select: true},
+                    validations: [{ type: 'gte', value: 0, msg: "must be >= 0<br/>(escape to cancel)"},
+                    { type: function (ui) {
+                        if (ui.value > (ui.rowData.decTotalCost - ui.rowData.decAppliedOther - ui.rowData.decAdjustedOther)){
+                            ui.msg = "must be <= balance due<br/>(escape to cancel)";
+                            return false;
+                        }
+                    }}],
+                    editModel: {clicksToEdit:1, pressToEdit:false, filterKeys:true, keyUpDown:false, saveKey:$j.ui.keyCode.ENTER}
+                });
+            }
+
+            else if(col.dataIndx == 'decBalance')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if (ui.rowData.decAppliedNew != ui.rowData.decAppliedOld)
+                            $j(this).pqGrid('addClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'highlight'});
+                        else 
+                            $j(this).pqGrid('removeClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'highlight'});
+
+                        return accounting.formatMoney(ui.rowData.decBalance);
+                    }
+                });
+            }
+            else if(col.dataIndx == 'decAppliedOther')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        return accounting.formatMoney(ui.rowData.decAppliedOther);
+                    }
+                });
+            }
+
+            else if(col.dataIndx == 'decAdjustedOther')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        return accounting.formatMoney(ui.rowData.decAdjustedOther);
+                    }
+                });
+            }
+
+            else if(col.dataIndx == 'decTotalCost')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        return accounting.formatMoney(ui.rowData.decTotalCost);
+                    }
+                });
+            }
+
+           else if(col.dataIndx == 'UnitCost')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        return accounting.formatMoney(ui.rowData.UnitCost);
+                    }
+                });
+            }
+
+        }); 
+        
+
+        $gridDiv.pqGrid(gridObj);
+        //$gridDiv.on('pqgridrefresh', function(event, ui));
+
+        //when cell editing begins, if there is no inventory, and no allocation, then there's nothing to do, so quit edit mode.
+        // $gridDiv.on('pqgrideditorbegin', function(event,ui)
+        // {
+        //     if(ui.dataIndx == 'decAppliedNew')
+        //     {
+        //         $j(this).pqGrid('getEditCell').$cell.find('input').val(accounting.formatNumber(ui.rowData.decAppliedNew));
+        //     }
+        // });
+
+        //if the new data is the same as the old data, then there's no reason to call the remote action, so quit edit mode.
+        $gridDiv.on('pqgridcellbeforesave', function(event,ui)
+        {
+            if(ui.dataIndx == 'decAppliedNew')
+            {
+                if(parseFloat(ui.rowData.decAppliedNew).toFixed(0) == parseFloat(ui.newVal).toFixed(0))
+                {
+                    $j(this).pqGrid('quitEditMode');
+                    return false;
+                }
+            }
+            else if(ui.dataIndx == 'decAdjustedNew')
+            {
+                if(parseFloat(ui.rowData.decAdjustedNew).toFixed(2) == parseFloat(ui.newVal).toFixed(2))
+                {
+                    $j(this).pqGrid('quitEditMode');
+                    return false;
+                }
+            }
+        });
+
+
+        $gridDiv.on('pqgridcellsave', function(event,ui)
+        {
+            if(ui.dataIndx == 'decAppliedNew')
+            {
+                var newval = parseFloat(ui.rowData.decAppliedNew).toFixed(2);
+                var oldval = parseFloat(ui.oldVal).toFixed(2);
+                var diff = oldval - newval;
+
+                if (newval == 0 && ui.rowData.decAdjustedNew == 0){
+                    InvoiceLinejData[ui.rowIndx].PeriodName = '';
+                    InvoiceLinejData[ui.rowIndx].idPeriodNew = '0';
+                    if (curBillAssignmentLevel = ASSIGNLEVEL.LINE)
+                        curBillAssignmentLevel = ASSIGNLEVEL.ANY;
+                }
+                else
+                {
+                    curBillAssignmentLevel = ASSIGNLEVEL.LINE;
+                    if (InvoiceLinejData[ui.rowIndx].idPeriodNew == '0'){
+                        InvoiceLinejData[ui.rowIndx].PeriodName = DefaultPeriodName;
+                        InvoiceLinejData[ui.rowIndx].idPeriodNew = DefaultPeriodId;
+                        //alert(InvoiceLinejData[ui.rowIndx].PeriodName);
+                        //alert(InvoiceLinejData[ui.rowIndx].idPeriodNew);
+                    }
+                }
+
+                var $gridReceipt = $j('#grdReceipts');
+                var $gridInvoiceLine = $j('#divLineGrid');
+
+                InvoiceLinejData[ui.rowIndx].decBalance += diff;
+                ReceiptjData[rowCashReceipt].decAppliedNew -= diff;
+                ReceiptjData[rowCashReceipt].decUnapplied += diff;
+
+                
+                $gridInvoiceLine.pqGrid( "refreshRow", {rowIndx:ui.rowIndx} );
+                $gridReceipt.pqGrid( "refreshRow", {rowIndx:rowCashReceipt} );
+
+            }
+            else if (ui.dataIndx == 'decAdjustedNew')
+            {
+                var newval = parseFloat(ui.rowData.decAdjustedNew).toFixed(2);
+                var oldval = parseFloat(ui.oldVal).toFixed(2);
+                var diff = oldval - newval;
+
+                if (newval == 0 && ui.rowData.decAppliedNew == 0)
+                {
+                    InvoiceLinejData[ui.rowIndx].PeriodName = '';
+                    InvoiceLinejData[ui.rowIndx].AdjustmentGLName = '';
+                    InvoiceLinejData[ui.rowIndx].idPeriodNew = '0';
+                    InvoiceLinejData[ui.rowIndx].idAdjustmentGLNew = '0';
+                }
+                else
+                { 
+                    if (InvoiceLinejData[ui.rowIndx].idPeriodNew == '0'){
+                        InvoiceLinejData[ui.rowIndx].PeriodName = DefaultPeriodName;
+                        InvoiceLinejData[ui.rowIndx].idPeriodNew = DefaultPeriodId;
+                    }
+                    if (InvoiceLinejData[ui.rowIndx].idAdjustmentGLNew == '0'){
+                        InvoiceLinejData[ui.rowIndx].AdjustmentGLName = DefaultAdjustmentGLName;
+                        InvoiceLinejData[ui.rowIndx].idAdjustmentGLNew = DefaultAdjustmentGLId;
+                    }
+                }
+                    
+                var $gridInvoiceLine = $j('#divLineGrid');
+
+                InvoiceLinejData[ui.rowIndx].decBalance += diff;
+                $gridInvoiceLine.pqGrid( "refreshRow", {rowIndx:ui.rowIndx});
+            }
+        });
+
+    }
+
+    function fn_ApplyBalance(rowID)
+    {
+
+        if (InvoicejData[rowID].decBalance == 0) return;
+
+        var $gridReceipt = $j('#grdReceipts');
+        var $gridInvoice = $j('#grdInvoices');
+
+        var AppliedBill = InvoicejData[rowID].decAppliedNew;
+        var UnappliedBill = InvoicejData[rowID].decBalance;
+        var AppliedCR = ReceiptjData[rowCashReceipt].decAppliedNew;
+        var UnappliedCR = ReceiptjData[rowCashReceipt].decUnapplied;
+
+        AppliedBill += UnappliedBill;
+        AppliedCR += UnappliedBill;
+        UnappliedCR -= UnappliedBill;
+        UnappliedBill = 0;
+
+        InvoicejData[rowID].assignLevelNew = ASSIGNLEVEL.BILL;
+        if (InvoicejData[rowID].idPeriodNew == '0'){
+            InvoicejData[rowID].PeriodName = DefaultPeriodName;
+            InvoicejData[rowID].idPeriodNew = DefaultPeriodId;
+        }
+
+        InvoicejData[rowID].decAppliedNew = AppliedBill;
+        InvoicejData[rowID].decBalance = UnappliedBill;
+        $gridInvoice.pqGrid( "refreshRow", {rowIndx:rowID} );
+
+        ReceiptjData[rowCashReceipt].decAppliedNew = AppliedCR;
+        ReceiptjData[rowCashReceipt].decUnapplied = UnappliedCR;
+        $gridReceipt.pqGrid( "refreshRow", {rowIndx:rowCashReceipt} );
+
+    }
+
+    function fn_UnapplyBalance(rowID)
+    {
+        if (InvoicejData[rowID].decAppliedNew == 0) return;
+
+        var $gridReceipt = $j('#grdReceipts');
+        var $gridInvoice = $j('#grdInvoices');
+
+        var AppliedBill = InvoicejData[rowID].decAppliedNew;
+        var UnappliedBill = InvoicejData[rowID].decBalance;
+        var AppliedCR = ReceiptjData[rowCashReceipt].decAppliedNew;
+        var UnappliedCR = ReceiptjData[rowCashReceipt].decUnapplied;
+
+        UnappliedBill += AppliedBill;
+        AppliedCR -= AppliedBill;
+        UnappliedCR += AppliedBill;
+        AppliedBill = 0;
+
+        if (InvoicejData[rowID].decAdjustedNew == 0){
+            InvoicejData[rowID].PeriodName = '';
+            InvoicejData[rowID].idPeriodNew = '0';
+            InvoicejData[rowID].assignLevelNew = ASSIGNLEVEL.ANY;
+        }
+
+        InvoicejData[rowID].decAppliedNew = AppliedBill;
+        InvoicejData[rowID].decBalance = UnappliedBill;
+        $gridInvoice.pqGrid( "refreshRow", {rowIndx:rowID} );
+
+        ReceiptjData[rowCashReceipt].decAppliedNew = AppliedCR;
+        ReceiptjData[rowCashReceipt].decUnapplied = UnappliedCR;
+        $gridReceipt.pqGrid( "refreshRow", {rowIndx:rowCashReceipt} );
+
+    }
+
+    function fn_ApplyLineBalance(rowID)
+    {
+       
+        
+        if (InvoiceLinejData[rowID].decBalance == 0) return;
+
+        var $gridReceipt = $j('#grdReceipts');
+        var $gridInvoiceLine = $j('#divLineGrid');
+
+        var AppliedLine = InvoiceLinejData[rowID].decAppliedNew;
+        var UnappliedLine = InvoiceLinejData[rowID].decBalance;
+        var AppliedCR = ReceiptjData[rowCashReceipt].decAppliedNew;
+        var UnappliedCR = ReceiptjData[rowCashReceipt].decUnapplied;
+
+        AppliedLine += UnappliedLine;
+        AppliedCR += UnappliedLine;
+        UnappliedCR -= UnappliedLine;
+        UnappliedLine = 0;
+
+        if (InvoiceLinejData[rowID].idPeriodNew == '0'){
+            InvoiceLinejData[rowID].PeriodName = DefaultPeriodName;
+            InvoiceLinejData[rowID].idPeriodNew = DefaultPeriodId;
+        }
+
+        InvoiceLinejData[rowID].decAppliedNew = AppliedLine;
+        InvoiceLinejData[rowID].decBalance = UnappliedLine;
+        $gridInvoiceLine.pqGrid( "refreshRow", {rowIndx:rowID} );
+
+        ReceiptjData[rowCashReceipt].decAppliedNew = AppliedCR;
+        ReceiptjData[rowCashReceipt].decUnapplied = UnappliedCR;
+        $gridReceipt.pqGrid( "refreshRow", {rowIndx:rowCashReceipt} );
+    }
+
+    function fn_UnapplyLineBalance(rowID)
+    {
+       
+        if (InvoiceLinejData[rowID].decAppliedNew == 0) return;
+
+        var $gridReceipt = $j('#grdReceipts');
+        var $gridInvoiceLine = $j('#divLineGrid');
+
+        var AppliedLine = InvoiceLinejData[rowID].decAppliedNew;
+        var UnappliedLine = InvoiceLinejData[rowID].decBalance;
+        var AppliedCR = ReceiptjData[rowCashReceipt].decAppliedNew;
+        var UnappliedCR = ReceiptjData[rowCashReceipt].decUnapplied;
+
+        UnappliedLine += AppliedLine;
+        AppliedCR -= AppliedLine;
+        UnappliedCR += AppliedLine;
+        AppliedLine = 0;
+
+        if (InvoiceLinejData[rowID].idPeriodNew == '0'){
+            InvoiceLinejData[rowID].PeriodName = DefaultPeriodName;
+            InvoiceLinejData[rowID].idPeriodNew = DefaultPeriodId;
+        }
+
+        InvoiceLinejData[rowID].decAppliedNew = AppliedLine;
+        InvoiceLinejData[rowID].decBalance = UnappliedLine;
+        $gridInvoiceLine.pqGrid( "refreshRow", {rowIndx:rowID} );
+
+        ReceiptjData[rowCashReceipt].decAppliedNew = AppliedCR;
+        ReceiptjData[rowCashReceipt].decUnapplied = UnappliedCR;
+        $gridReceipt.pqGrid( "refreshRow", {rowIndx:rowCashReceipt} );
+    }
+
+    function fn_SetButton()
+    {
+            
+    }
+
+    
+    function fn_DialogMessage(title, msg)
+    {
+       
+        $j("#dialog").attr('title', title);
+        $j("#dialogtext").html(msg);
+        $j("#dialog").dialog({autoOpen: false, height:150, width: 300, modal: true,
+        buttons: {
+            Close: function() {
+                $j(this).dialog("close");
+            }}
+        });
+        $j("#dialog").dialog("open");
+        return;
+    }
+
+</script>
+
+
+</apex:page>

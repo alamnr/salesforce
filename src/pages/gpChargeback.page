@@ -1,0 +1,369 @@
+<apex:page controller="gcChargeback" showHeader="true" sidebar="true">
+
+<head>
+
+<c:gcmpJSCommon />
+
+<script type="text/javascript">
+
+    $j(document).ready(function()
+    {
+    	fn_initGrid();
+    	fn_initGrid_Billing();
+    	fn_initDatePicker();
+    	fn_refreshGrid();
+    	fn_refreshGrid_Billing();
+    });
+
+	function fn_initDatePicker()
+	{
+		$j('#datepickerFrom').datepicker({'showButtonPanel':true});
+		$j('#datepickerFrom').val('{!MONTH(TODAY())}/1/{!YEAR(TODAY())}');
+		$j('#datepickerFrom').change(function(){fn_refreshAll()});
+
+		$j('#datepickerThru').datepicker({'showButtonPanel':true});
+		$j('#datepickerThru').val('{!MONTH(TODAY())}/{!DAY(TODAY())}/{!YEAR(TODAY())}');
+		$j('#datepickerThru').change(function(){fn_refreshAll()});
+	}
+
+	function fn_refreshAll()
+	{
+		fn_refreshGrid();
+		fn_refreshGrid_Billing();
+	}
+
+	function fn_initGrid()
+	{
+		var gridObj = {title:"Sales Order Lines",
+						collapsible:{on:false,collapsed:false},
+						columnTemplate: {minWidth:50, sortable:true, dataType:"string"},
+						dataModel:{data:[], sorting:'local', location:'local'}, 
+						dragColumns:{enabled:false},
+						editable:false,
+						filterModel:{on:true, mode:'AND', header:true},
+						freezeCols:0,
+						freezeRows:0,
+						height:300,
+						historyModel:{on:false},
+						hoverMode:null,
+						hwrap:false,
+						numberCell:{show:false},
+						pageModel: {type:null},
+						pasteModel:{on:false},
+						resizable: true,
+						roundCorners: false,
+						scrollModel: {autoFit:true},
+						selectionModel: {type:'row', mode:'range'},
+						showBottom:true,
+						showHeader:true,
+						showTitle:true,
+						showTop:true,
+						showToolbar:false,
+						sortable:true,
+						swipeModel:{on:false},
+						virtualX: false,
+						//virtualXHeader: false,
+						virtualY: false,
+						width:'auto',
+						wrap:false};
+
+		gridObj.colModel=[{dataIndx:"vendorName", 	title:"Vendor", 						align:"left", 	gFilter:true},
+						  {dataIndx:"customerName", title:"Customer", 						align:"left", 	gFilter:true},
+						  {dataIndx:"salesOrderLineNumber", title:"Order Line", 				align:"left", 	dataType:"float"},
+						  {dataIndx:"productName",			title:"Product",				align:"left"},
+						  {dataIndx:"lotName",				title:"Lot",					align:"left"},
+						  {dataIndx:"lotVariantQty",		title:"Variant<br/>Qty",		align:"center", gFormat:"number"},
+						  {dataIndx:"qtyFilled",			title:"Qty<br/>Filled",			align:"center", gFormat:"number"},
+						  {dataIndx:"totalFilled",			title:"Total<br/>Filled",		align:"right", gFormat:"money"},
+						  {dataIndx:"unitPrice",			title:"Chargeback<br/>Unit Price",	align:"right", dataType:"float", gFormat:"money"},
+						  {dataIndx:"chargebackPotential",	title:"Chargeback<br/>Potential",	align:"right", dataType:"float", gFormat:"money", gTotal:true},
+						  {dataIndx:"chargebackBilled",		title:"Chargeback<br/>Billed",		align:"right", dataType:"float", gFormat:"money", gTotal:true},
+						  /*
+                		  {dataIndx:"state",				title: "", 	maxWidth: 30, minWidth: 30, align: "center",
+                    		cb: { header: true, all: false },
+                    		type: 'checkBoxSelection', cls: 'ui-state-default', resizable: false, sortable: false, editable: false},
+                    	   */
+						  {dataIndx:"scrollSpacer", title:"", minWidth:15, maxWidth:15}
+						  ];
+
+		fn_initFormat(gridObj.colModel);
+		fn_initFilter(gridObj.colModel);
+
+		$j.each(gridObj.colModel, function(i,col)
+		{
+			if(col.dataIndx == 'salesOrderLineNumber')
+			{
+				$j.extend(col,{
+					render: function(ui)
+					{
+						if(ui.rowData.isTotal) return;
+						var strHTML = '<a href=\"/' + ui.rowData.idSalesOrderLine + '\" target=\"_blank\">'+ui.rowData.salesOrderLineNumber+'</a>';
+						return strHTML;
+					}
+				});
+			}
+			if(col.dataIndx == 'vendorName')
+			{
+				$j.extend(col,{
+					render: function(ui)
+					{
+						if(ui.rowData.isTotal) return;
+						var strHTML = '<a href=\"/' + ui.rowData.idVendor + '\" target=\"_blank\">'+ui.rowData.vendorName+'</a>';
+						return strHTML;
+					}
+				});
+			}
+			if(col.dataIndx == 'customerName')
+			{
+				$j.extend(col,{
+					render: function(ui)
+					{
+						if(ui.rowData.isTotal) return;
+						var strHTML = '<a href=\"/' + ui.rowData.idCustomer + '\" target=\"_blank\">'+ui.rowData.customerName+'</a>';
+						return strHTML;
+					}
+				});
+			}
+			if(col.dataIndx == 'productName')
+			{
+				$j.extend(col,{
+					filter: { type: 'textbox', condition: 'contain', listeners: ['keyup'] },
+					render: function(ui)
+					{
+						if(ui.rowData.isTotal) return;
+						var strHTML = '<a href=\"/' + ui.rowData.idProduct + '\" target=\"_blank\">'+ui.rowData.productName+'</a>';
+						return strHTML;
+					}
+				});
+			}
+			if(col.dataIndx == 'lotName')
+			{
+				$j.extend(col,{
+					render: function(ui)
+					{
+						if(ui.rowData.isTotal) return;
+						var strHTML = '<a href=\"/' + ui.rowData.idLot + '\" target=\"_blank\">'+ui.rowData.lotName+'</a>';
+						return strHTML;
+					}
+				});
+			}
+
+			if(col.dataIndx == 'chargebackBilled')
+			{
+				$j.extend(col,{
+					render: function(ui)
+					{
+						if(ui.rowData.isTotal){
+							if (ui.rowData.chargebackBilled == 0)
+								return '0';
+							else
+								return accounting.formatMoney(ui.rowData.chargebackBilled);
+						}
+						if(parseFloat(ui.rowData.chargebackBilled) == 0) return '';
+
+						var strHTML = '<a href=\"/' + ui.rowData.idBillingLine + '\" target=\"_blank\">'+accounting.formatMoney(ui.rowData.chargebackBilled)+'</a>';
+						return strHTML;
+					}
+				});
+			}
+		});
+
+		var $gridDiv = $j('#myGrid');
+
+		$gridDiv.pqGrid(gridObj);
+
+		fn_appendExportLink($gridDiv);
+
+		$gridDiv.on('pqgridrefresh', function(event, ui)
+		{
+	        fn_refreshTotal($j(this),ui.pageData);
+		});
+		$gridDiv.on('pqgridrowselect', function(event, ui)
+		{
+			if(ui.rowIndx != undefined)
+			{
+				if(ui.rowData.enableChargeback == 'false')
+				{
+					$j(this).pqGrid('selection',{type:'row', method:'remove', rowIndx:ui.rowIndx});
+					//alert('The row cannot be selected because a chargeback billing already exists.');
+				}
+			}
+			else
+			{
+
+			}
+		});
+	}
+
+	function fn_createChargebacks()
+	{
+		var $gridDiv = $j('#myGrid');
+
+		var selectedRows = $gridDiv.pqGrid('selection', { type: 'row', method: 'getSelection' });
+		var ids = [];
+		$j.each(selectedRows, function(i,row)
+		{
+			if(row.rowData.enableChargeback == 'true')
+				ids.push(row.rowData.idSalesOrderLine);
+		});
+
+		if(ids.length == 0)
+		{
+			alert('Select at least one Sales Order Line for which a Chargeback does not already exist.');
+			return;
+		}
+
+		fn_showSpinner();
+
+		Visualforce.remoting.Manager.invokeAction(
+			'{!$RemoteAction.gcChargeback.createBillings}',
+			ids,
+			function(result,event){if(event.status){ fn_refreshAll(); fn_hideSpinner();}else {alert(event.message); fn_hideSpinner();}},
+			{buffer:true, escape:true, timeout:120000});
+	}
+
+	function fn_refreshGrid()
+	{
+		fn_showSpinner();
+		var $gridDiv = $j('#myGrid');
+
+		Visualforce.remoting.Manager.invokeAction(
+			'{!$RemoteAction.gcChargeback.retrieveSalesOrderLines}',
+			$j('#datepickerFrom').val(),$j('#datepickerThru').val(),null,null,
+			function(result,event){if(event.status) fn_refreshGrid_callback($gridDiv,result);else {alert(event.message); fn_hideSpinner();}},
+			{buffer:true, escape:true, timeout:120000});	
+	}
+
+	function fn_initGrid_Billing()
+	{
+		var gridObj = {title:"Chargeback Billings",
+						collapsible:{on:false,collapsed:false},
+						columnTemplate: {minWidth:50, sortable:true, dataType:"string"},
+						dataModel:{data:[], sorting:'local', location:'local'}, 
+						dragColumns:{enabled:false},
+						editable:false,
+						filterModel:{on:false, mode:'AND', header:false},
+						freezeCols:0,
+						freezeRows:0,
+						height:300,
+						historyModel:{on:false},
+						hoverMode:null,
+						hwrap:false,
+						numberCell:{show:false},
+						pageModel: {type:null},
+						pasteModel:{on:false},
+						resizable: true,
+						roundCorners: false,
+						scrollModel: {autoFit:true},
+						selectionModel: {type:'row', mode:'range'},
+						showBottom:false,
+						showHeader:true,
+						showTitle:true,
+						showTop:true,
+						showToolbar:true,
+						sortable:true,
+						swipeModel:{on:false},
+						virtualX: false,
+						//virtualXHeader: false,
+						virtualY: false,
+						width:'auto',
+						wrap:false};
+
+		gridObj.colModel=[{dataIndx:"customerName", title:"Bill To", 						align:"left"},
+						  {dataIndx:"billingNumber",	title:"Bill #",							align:"left", dataType:"float"},
+						  {dataIndx:"periodName",		title:"Period",						align:"center"},
+						  {dataIndx:"billingDate",	title:"Bill Date",						align:"center", dataType:"date"},
+						  {dataIndx:"billingTotal", title:"Total",							align:"right",gFormat:"money"},
+						  {dataIndx:"billingBalance", title:"Balance",						align:"right",gFormat:"money"},
+						  {dataIndx:"status",		title:"Status",							align:"center"},
+						  {dataIndx:"lastModifiedDate",	title:"Last Modified",				align:"center",dataType:"date"},
+						  {dataIndx:"lastModifiedBy", title:"Modified By",					align:"left"},
+						  {dataIndx:"action", title:"",					align:"center", maxWidth: 100}];
+
+		fn_initFormat(gridObj.colModel);
+		fn_initFilter(gridObj.colModel);
+
+		$j.each(gridObj.colModel, function(i,col)
+		{
+			if(col.dataIndx == 'billingNumber')
+			{
+				$j.extend(col,{
+					render: function(ui)
+					{
+						if(ui.rowData.isTotal) return;
+						var strHTML = '<a href=\"/' + ui.rowData.idBilling + '\" target=\"_blank\">'+ui.rowData.billingNumber+'</a>';
+						return strHTML;
+					}
+				});
+			}
+			else if(col.dataIndx == 'action')
+			{
+				$j.extend(col,{
+					render:function(ui)
+					{
+						if(ui.rowData.isTotal == true) return;
+						return '<input type="button" value="Movements" onclick="fn_inventoryMovements(\''+ui.rowData.idBilling+'\')" />';
+					}
+				});				
+			}
+		});
+
+		var $gridDiv = $j('#myGridBilling');
+
+		$gridDiv.pqGrid(gridObj);
+
+		fn_appendExportLink($gridDiv);
+
+		$gridDiv.on('pqgridrefresh', function(event, ui)
+		{
+	        fn_refreshTotal($j(this),ui.pageData);
+		});
+	}
+
+	function fn_inventoryMovements(idBilling)
+	{
+		window.open('/apex/gpInventoryMovementReport_Billing?Id=' + idBilling);
+	}
+
+	function fn_refreshGrid_Billing()
+	{
+		fn_showSpinner();
+		var $gridDiv = $j('#myGridBilling');
+
+		Visualforce.remoting.Manager.invokeAction(
+			'{!$RemoteAction.gcChargeback.retrieveBillings}',
+			$j('#datepickerFrom').val(),$j('#datepickerThru').val(),null,null,
+			function(result,event){if(event.status) fn_refreshGrid_callback($gridDiv,result);else {alert(event.message); fn_hideSpinner();}},
+			{buffer:true, escape:true, timeout:120000});	
+	}
+</script>
+</head>
+	<div id="spinner" class="spinner" style="display:none;"></div>
+	
+	<div style="margin:0 auto; width:95%;">
+		<table>
+			<tr>
+				<td style="text-align:right;">
+					Filled From:&nbsp;&nbsp;<input type="text" id="datepickerFrom" size="12"/>&nbsp;&nbsp;
+				</td>
+				<td style="text-align:left;">
+					&nbsp;&nbsp;Filled Thru:&nbsp;&nbsp;<input type="text" id="datepickerThru" size="12"/>
+				</td>				
+			</tr>
+			<tr>
+				<td style="text-align:center;" colspan="2">
+					<button onclick="fn_refreshAll();">Refresh Grid</button>
+					&nbsp;&nbsp;
+					<button onclick="fn_createChargebacks();">Create Chargeback Billings</button>
+				</td>
+			</tr>
+			<tr>
+				<td colspan="2">
+					<div id="myGrid"></div>
+					<br/>
+					<div id="myGridBilling"></div>
+				</td>
+			</tr>
+		</table>
+	</div>
+</apex:page>

@@ -1,0 +1,32 @@
+<apex:component controller="gcDocument_PurchaseOrder" layout="none" access="global">
+
+<apex:attribute name="attrIdPurchaseOrder" assignTo="{!idPurchaseOrder}" type="String" access="global" description="The Id of the PurchaseOrder."/>
+Please find attached a detailed Purchase Order
+
+***PURCHASE ORDER SUMMARY***
+Purchase Order Number:  {!order.Name}
+Date: <apex:outputText value="{0, date, MMMM d','  yyyy}"><apex:param value="{!order.AcctSeedERP__Order_Date__c}" /> </apex:outputText>
+**********************
+
+***SALES ORDER LINE ITEMS***
+<apex:repeat value="{!order.AcctSeedERP__Purchase_Order_Lines__r}" var="line">
+{!line.AcctSeedERP__Product__r.Name}.....<apex:outputText value="{0, number,###,##0}"><apex:param value="{!line.AcctSeedERP__Quantity__c}"/></apex:outputText>
+</apex:repeat>
+
+*
+***PLEASE SEE ATTACHMENT FOR ALL PICKING SLIP DETAILS***
+
+
+
+
+
+
+
+
+
+
+
+
+
+[do not delete ref:{!$CurrentPage.parameters.idAttachment}]
+</apex:component>

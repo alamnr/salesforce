@@ -1,0 +1,8 @@
+<apex:component layout="none" access="global">
+
+	<c:gcmpEmail_Billing attrIdBilling="{!$CurrentPage.parameters.idParent}" rendered="{!IF($CurrentPage.parameters.component=='Billing',true,false)}"/>
+	<c:gcmpEmail_InventoryTransfer attrIdInventoryTransfer="{!$CurrentPage.parameters.idParent}" rendered="{!IF($CurrentPage.parameters.component=='InventoryTransfer',true,false)}"/>
+	<c:gcmpEmail_SalesOrder attrIdSalesOrder="{!$CurrentPage.parameters.idParent}" rendered="{!IF($CurrentPage.parameters.component=='SalesOrder',true,false)}"/>
+	<c:gcmpEmail_PurchaseOrder attrIdPurchaseOrder="{!$CurrentPage.parameters.idParent}" rendered="{!IF($CurrentPage.parameters.component=='PurchaseOrder',true,false)}"/>
+	<c:gcmpEmail_USCIssues attrIdUSCIssue="{!$CurrentPage.parameters.idParent}" rendered="{!IF($CurrentPage.parameters.component=='USCOverride',true,false)}"/>
+</apex:component>

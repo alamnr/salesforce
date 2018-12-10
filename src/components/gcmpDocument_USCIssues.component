@@ -1,0 +1,275 @@
+<apex:component controller="gcDocument_USCIssues" access="global" layout="none">
+<apex:attribute name="attrUSCIssueList" assignTo="{!USCIDString}" type="String" access="global" description="The Id of the USC Issue."/>
+
+<head>
+<style>	
+@page { 
+	size:portrait; 
+	margin-right:0.35in;
+	margin-left:0.35in;
+	margin-top:0.75in;
+	margin-bottom:0.5in;
+	border:0;
+	padding:0;
+	
+	@top-center{content: element(header);}
+	@bottom-center{content: element(footer);}
+}
+
+@page{
+	 margin-top:1.75in; /*the added margin is to accomodate the additional information that is in the running header*/
+	 margin-bottom:0.5in; /*1.15in;*/
+}
+
+.highlight{
+    background-color:yellow;
+}
+
+body{
+	margin:0 auto;
+	border:1px solid white;
+	padding:0;
+} 
+
+.runningHeader{
+	position:running(header);
+	width:100%;
+	border:1px solid white;
+	padding:0;
+	margin:0 auto;}
+
+.header{
+	border:0;
+	//margin-bottom:5px;
+}
+
+.runningFooter {
+	position: running(footer);
+	width:100%;
+	border:1px solid white;
+	padding:0;
+	margin:0 auto;
+}
+.footer {
+	font-size:11px;
+	border:0;
+}
+.headerLabel{
+	font-size:10px;
+	font-weight:bold;
+}
+.headerValue{
+	font-size:12px;
+	/* color:#404040; */
+}
+table{
+	width:100%;
+	border-collapse:collapse;
+}
+td{
+	text-align:left;
+	vertical-align:top;
+}
+*{
+	font-family: sans-serif;
+}
+firstLetter{
+	font-size:120%;
+}
+
+.pageNumber:before{
+	content:counter(page);
+}
+.pageCount:before{
+	content: counter(pages);
+}
+
+.border1{
+	border: 1px solid #000;
+}
+.center{
+	text-align:center;
+}
+.right{
+	text-align:right;
+}
+.left{
+	text-align:left;
+}
+.top{
+	vertical-align:top;
+}
+.font1{
+	font-size:10px;
+}
+.font2{
+	font-size:12px;
+}
+ol.alphaCounter {
+	list-style-type: upper-alpha;
+}
+
+#statement {
+	/*
+	Running footer always takes the same amount of margin below and top of it. 
+	So in this case for footer 1in bottom and top will always be empty.
+	we are positioning the desclaimer text right before footer. means bottom:0 for the page.
+	*/
+	/*position: static;
+	height: 100%;
+	width: 100%;
+	display: block;
+	vertical-align: bottom;
+	bottom: 0 !important;*/
+	margin-top: 10px;
+}
+
+</style>
+
+</head>
+
+<div class="runningHeader">
+	<div class="header">
+		<table>
+			<tr>
+				<td class="font1" style="text-align:left; vertical-align:top;" width="33%">
+					<apex:image url="{!$Resource.ProdigyBWLogo}" width="237" height="78" />
+					<b>&nbsp;&nbsp;9417 Brodie Lane</b> <br/>
+					<b>&nbsp;&nbsp;Austin, TX 78748</b> <br/>
+				</td>
+
+				<td style="text-align:center; vertical-align:top;" width="34%">
+					<span style="font: 32px;">USC Issues</span>
+				</td>
+
+				<td class="font1" style="text-align:right; vertical-align:top; padding-top:7px;"  width="33%">
+					<table>
+						<tr style="text-align: center; vertical-align: top;">
+							<td class="border1 center">
+								<b>Date</b> <br/>
+								<apex:outputText value="{0, date, MMMM d','  yyyy}">
+    								<apex:param value="{!NOW()}" />
+							</apex:outputText>
+							</td>
+							<td class="border1 center">
+								<b>Page</b> <br/>
+								<span class="pageNumber"/>&nbsp;of&nbsp;<span class="pageCount"/>
+							</td>
+						</tr>
+					</table>
+				</td>			
+			</tr>
+		</table>
+	</div>
+</div>
+
+<div class="runningFooter">
+	<div class="footer center">
+		<span>Prodigy Health Supplier Corporation&nbsp;&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;&nbsp;9417 Brodie Lane, Austin, TX 78748&nbsp;&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;&nbsp;PH: (512)693-4376&nbsp;&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;&nbsp;FAX: (512)693-4067</span>
+	</div>
+</div>
+
+<div style="margin-top:5px;">
+    <table>
+        <tr>
+            <td width="9%" class="border1 left top font2">
+                <span  class="headerLabel" style="font-weight:bold">SOP Number</span>
+            </td>
+            <td width="8%" class="border1 left top font2">
+                <span  class="headerLabel" style="font-weight:bold">Invoice Date</span>
+            </td>           
+            <td width="24%" class="border1 left top font2">
+                <span  class="headerLabel" style="font-weight:bold">Customer</span>
+            </td>           
+            <td width="24%" class="border1 left top font2">
+                <span  class="headerLabel" style="font-weight:bold">Product</span>
+            </td>
+            <td width="7%" class="border1 left top font2">
+                <span  class="headerLabel" style="font-weight:bold">QTY</span>
+            </td>
+            <td width="7%" class="border1 left top font2">
+                <span  class="headerLabel" style="font-weight:bold">Report&nbsp;<br/>Unit Cost</span>
+            </td>
+                        <td width="7%" class="border1 left top font2">
+                <span  class="headerLabel" style="font-weight:bold">Report&nbsp;<br/>Unit Price</span>
+            </td>
+            <td width="7%" class="border1 left top font2">
+                <span  class="headerLabel" style="font-weight:bold">Prodigy&nbsp;<br/>Unit Cost</span>
+            </td>
+            <td width="7%" class="border1 left top font2">
+                <span  class="headerLabel" style="font-weight:bold">Prodigy&nbsp;<br/>Unit Price</span>
+            </td>
+        </tr>
+
+        <apex:repeat value="{!issues}" var="line">
+        <tr style="page-break-inside:avoid;">
+            <td class="border1 top left font1">
+                <span>{!line.SOP_Number__c}</span>
+            </td>
+            <td class="border1 top left font1">
+           		 <apex:outputText value="{0, date, MM/dd/yyyy}"><apex:param value="{!line.Invoice_Date__c}"/></apex:outputText>
+            </td>
+            <td class="border1 top left font1">
+                <span>{!line.Customer_Number__c}</span>
+                <br/>
+                <span>{!line.Customer_Name__c}</span>
+            </td>
+            <td class="border1 top left font1">
+                <span>{!line.Item_Number__c}</span>
+                <br/>
+                <span>{!line.Item_Description__c}</span>
+            </td>
+            <td class="border1 top right font1">
+                <apex:outputText value="{0, number, ###,##0}">
+                    <apex:param value="{!line.QTY__c}"/>
+                </apex:outputText>
+            </td>
+
+            <td class="border1 top right font1" style="display:{!IF(line.Import_Unit_Cost__c != line.Contract_Unit_Cost__c, 'none', 'table-cell')};">
+                <apex:outputText value="${0, number,###,##0.00}">
+                    <apex:param value="{!line.Import_Unit_Cost__c}"/>
+                </apex:outputText>
+            </td>
+            <td class="border1 top right font1 highlight" style="display:{!IF(line.Import_Unit_Cost__c == line.Contract_Unit_Cost__c, 'none', 'table-cell')};">
+                <apex:outputText value="${0, number,###,##0.00}">
+                    <apex:param value="{!line.Import_Unit_Cost__c}"/>
+                </apex:outputText>
+            </td>
+            <td class="border1 top right font1" style="display:{!IF(line.Import_Unit_Price__c != line.Contract_Unit_Price__c, 'none', 'table-cell')};">
+                <apex:outputText value="${0, number,###,##0.00}">
+                    <apex:param value="{!line.Import_Unit_Price__c}"/>
+                </apex:outputText>
+            </td>
+            <td class="border1 top right font1 highlight" style="display:{!IF(line.Import_Unit_Price__c == line.Contract_Unit_Price__c, 'none', 'table-cell')};">
+                <apex:outputText value="${0, number,###,##0.00}">
+                    <apex:param value="{!line.Import_Unit_Price__c}"/>
+                </apex:outputText>
+            </td>
+
+            <td class="border1 top right font1" style="display:{!IF(line.Import_Unit_Cost__c != line.Contract_Unit_Cost__c, 'none', 'table-cell')};">
+                <apex:outputText value="${0, number,###,##0.00}">
+                    <apex:param value="{!line.Contract_Unit_Cost__c}"/>
+                </apex:outputText>
+            </td>
+            <td class="border1 top right font1 highlight" style="display:{!IF(line.Import_Unit_Cost__c == line.Contract_Unit_Cost__c, 'none', 'table-cell')};">
+                <apex:outputText value="${0, number,###,##0.00}">
+                    <apex:param value="{!line.Contract_Unit_Cost__c}"/>
+                </apex:outputText>
+            </td>
+            <td class="border1 top right font1" style="display:{!IF(line.Import_Unit_Price__c != line.Contract_Unit_Price__c, 'none', 'table-cell')};">
+                <apex:outputText value="${0, number,###,##0.00}">
+                    <apex:param value="{!line.Contract_Unit_Price__c}"/>
+                </apex:outputText>
+            </td>
+            <td class="border1 top right font1 highlight" style="display:{!IF(line.Import_Unit_Price__c == line.Contract_Unit_Price__c, 'none', 'table-cell')};">
+                <apex:outputText value="${0, number,###,##0.00}">
+                    <apex:param value="{!line.Contract_Unit_Price__c}"/>
+                </apex:outputText>
+            </td>
+  
+        </tr>       
+        </apex:repeat>
+    </table>
+</div>
+
+</apex:component>

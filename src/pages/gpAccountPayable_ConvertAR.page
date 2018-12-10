@@ -1,0 +1,803 @@
+<apex:page standardController="AcctSeed__Account_Payable__c" extensions="gcAccountPayable_ConvertAR" showHeader="true" sidebar="false" cache="false">
+
+<head>
+
+<apex:stylesheet value="{!URLFOR($Resource.GMBLJS__jQueryUI,'/jquery-ui/jquery-ui.min.css')}"/>
+<apex:stylesheet value="{!URLFOR($Resource.GMBLJS__pqGridPro241,'/pqgrid.min.css')}"/>
+
+<apex:includeScript value="{!$Resource.GMBLJS__jQuery}"/>
+<apex:includeScript value="{!URLFOR($Resource.GMBLJS__jQueryUI,'/jquery-ui/jquery-ui.min.js')}"/>
+<apex:includeScript value="{!$Resource.GMBLJS__accountingJS}"/>
+<apex:includeScript value="{!$Resource.GMBLJS__ExcellentExport}"/>
+
+<apex:includeScript value="{!URLFOR($Resource.GMBLJS__pqGridPro241,'/pqgrid.min.js')}"/>
+
+<apex:includeScript value="{!$Resource.GMBLJS__gsrSpinner}"/>
+<apex:includeScript value="{!$Resource.GMBLJS__gsrGrid}"/>
+
+<style>
+table{
+	width:100%;
+	border-collapse:collapse;
+}
+.yellow{
+	background-color:yellow;
+}
+.red{
+	background-color:red;
+}
+tr.pq-row-select td{
+	background-color:yellow;
+}
+tr.total td{
+	font-weight: bold;
+}
+div.pq-grid-footer{
+	display:none;
+}
+</style>
+
+<script>function setFocusOnLoad() {}</script>
+<script type="text/javascript">
+
+    $j = jQuery.noConflict();
+
+    $j(document).ready(function()
+    {
+    	fn_initGrid_billingLines();
+    	fn_initGrid_creditLinesExisting();
+
+    	fn_refreshAll();
+    });
+
+    function fn_refreshAll()
+    {
+    	fn_refreshGrid_billingLines();
+    	fn_refreshGrid_creditLinesExisting();
+    	fn_rerenderRelated();
+    	fn_rerenderDetail();
+    }
+	accounting.settings = {
+		currency: {
+			symbol : "$",   // default currency symbol is '$'
+			format: "%s%v", // controls output: %s = symbol, %v = value/number (can be object: see below)
+			decimal : ".",  // decimal point separator
+			thousand: ",",  // thousands separator
+			precision : 2   // decimal places
+		},
+		number: {
+			precision : 0,  // default precision on numbers is 0
+			thousand: ",",
+			decimal : "."
+		}
+	}
+
+	function fn_initGrid_billingLines()
+	{
+		var gridObj = {title:"Billing Lines",
+						collapsible:{on:false,collapsed:false,toggle:false},
+						columnTemplate: {minWidth:75, sortable:true},
+						dataModel:{data:null, sorting:'local', location:'local', sortDir:'up'}, 
+						dragColumns:{enabled:false},
+						editable:false,
+						filterModel:{on:true, mode:'AND', header:true},
+						freezeCols:6,
+						freezeRows:0,
+						height:300,
+						historyModel:{on:false},
+						hoverMode:'row',
+						hwrap:false,
+						numberCell:{show:true},
+						pageModel: {type:null},
+						pasteModel:{on:false},
+						resizable: true,
+						roundCorners: false,
+						//scrollModel: {pace: 'fast', autoFit: false, lastColumn: 'none', theme: false, flexContent: undefined },
+						selectionModel:{type:'null'}, //do not use fireSelectChange because it only passes SELECTED rows (not UNSELECTED rows); use rowSelect and rowUnselect events instead.
+						showBottom:true,
+						showHeader:true,
+						showTitle:true,
+						showTop:true,
+						showToolbar:true,
+						sortable:true,
+						swipeModel:{on:false},
+						track:false,
+						trackModel:{on:false},
+						virtualX: false,
+						//virtualXHeader: false,
+						virtualY: false,
+						//width:'auto',
+						wrap:false};
+
+gridObj.colModel=[
+{dataIndx:"customerName",			title:"Customer",						align:"left",	dataType:"string",	gFilter:"text", width:200},	
+{dataIndx:"billingNameCustomer", 	title:"Customer<br/>Billing", 			align:"center", dataType:"string",  gFilter:"text", width:100},	
+{dataIndx:"salesOrderLineName", 	title:"Sales Order<br/>Line", 			align:"center", dataType:"string",  gFilter:"text", width:100},
+{dataIndx:"productName", 			title:"Product Name", 					align:"left", 	dataType:"string",	gFilter:"text", width:200},
+{dataIndx:"productCode", 			title:"Product Code", 					align:"left", 	dataType:"string",	gFilter:"text", minWidth:100},
+{dataIndx:"lotName", 				title:"Lot #", 							align:"left", 	dataType:"string",	gFilter:"text", maxWidth:100},
+{dataIndx:"lotExpirationDate", 		title:"Expiration", 					align:"center", dataType:"date", 					maxWidth:75},
+{dataIndx:"lotVariantQty", 			title:"Var.Units", 						align:"center", dataType:"float", gFormat:'number', maxWidth:75},
+{dataIndx:"salesOrderLineQty",		title:"Order<br/>Qty",					align:"center", dataType:"float", gFormat:'number', minWidth:40, maxWidth:40},
+{dataIndx:"orderUnitPrice",			title:"Order<br/>$/unit",				align:"right",  dataType:"float", gFormat:'money'},
+{dataIndx:"billingLineName",		title:"Vendor&nbsp;<br/>Billing Line",	align:"center",	dataType:"string", maxWidth:100},
+{dataIndx:"billingLineQty",			title:"Billed<br/>Qty",					align:"center", dataType:"float", gFormat:'number', minWidth:40, maxWidth:40},
+{dataIndx:"billingLineRate",		title:"Billed&nbsp;<br/>$/unit",		align:"right",  dataType:"float", gFormat:'money',  maxWidth:75},
+{dataIndx:"billingLineTotal",		title:"Billed<br/>Amount",				align:"right",  dataType:"float", gFormat:'money',  maxWidth:75},
+{dataIndx:"billingLineCredit",		title:"Prior<br/>Credits",				align:"right",  dataType:"float", gFormat:'money',  maxWidth:75},
+{dataIndx:"billingLineBalance",		title:"Balance",						align:"right",  dataType:"float", gFormat:'money',  maxWidth:75},
+{dataIndx:"convertToAP",			title:"Convert&nbsp;<br/>To A/P",		align:"right",  dataType:"float", gFormat:'money',  maxWidth:75, gTotal:true},
+{dataIndx:"writeDown",				title:"Decrease&nbsp;<br/>Revenue",		align:"right",  dataType:"float", gFormat:'money',  maxWidth:75, gTotal:true},
+{dataIndx:"state",					title:"",								align:"center",										minWidth:75,maxWidth:75,
+	cb:{header:false, all:false}, type: 'checkBoxSelection', cls: 'ui-state-default', resizable: false, sortable: true, editable: false},
+{dataIndx:"scrollSpacer", minWidth:15, maxWidth:15}];
+
+		gGrid.initFormat(gridObj.colModel);
+		gGrid.initFilter(gridObj.colModel);
+
+		gridObj.toolbar={
+
+           items: [
+                { type: '<span>Freeze Columns: </span>' },
+                { type: 'select', options: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,12,13,14,15],
+                	listeners: [
+	                    {
+	                        change: function (evt) {
+	                            $j('#billingLines').pqGrid("option", "freezeCols", $j(this).val());
+	                            $j('#billingLines').pqGrid("refreshView");
+	                        }
+	                    }
+                	]
+                }
+                ]
+        };
+
+		$j.each(gridObj.colModel, function(i,col)
+		{
+			if(col.dataIndx == 'salesOrderLineName')
+			{
+				$j.extend(col,{
+					render:function(ui)
+					{
+						if(ui.rowData.salesOrderLineName === undefined ||
+						   ui.rowData.salesOrderLineName === null ||
+						   ui.rowData.salesOrderLineName.length == '' ||
+						   ui.rowData.isTotal === true) return '';
+
+						var $myObj = $j('<a>').html(ui.rowData.salesOrderLineName).attr('href','/'+ui.rowData.idSalesOrderLine).attr('target','_blank');
+						var myHTML = $j('<wrap>').append($myObj).html();
+						$myObj = null;
+						return myHTML;
+					}
+				});
+			}
+
+			else if(col.dataIndx == 'billingNameCustomer')
+			{
+				$j.extend(col,{
+					render:function(ui)
+					{
+						if(ui.rowData[col.dataIndx] === undefined ||
+						   ui.rowData[col.dataIndx] === null ||
+						   ui.rowData[col.dataIndx] == '') return '';
+
+						var $myObj = $j('<a>').html(ui.rowData.billingNameCustomer).attr('href','/'+ui.rowData.idBillingCustomer).attr('target','_blank');
+						var myHTML = $j('<wrap>').append($myObj).html();
+						$myObj = null;
+						return myHTML;
+					}
+				});
+			}
+
+			else if(col.dataIndx == 'lotName')
+			{
+				$j.extend(col,{
+					render:function(ui)
+					{
+						if(ui.rowData.lotName === undefined ||
+						   ui.rowData.lotName === null ||
+						   ui.rowData.lotName.length == 0) return '';
+
+						var $myObj = $j('<a>').html(ui.rowData.lotName).attr('href','/'+ui.rowData.idLot).attr('target','_blank');
+						var myHTML = $j('<wrap>').append($myObj).html();
+						$myObj = null;
+						return myHTML;
+					}
+				});
+			}
+
+			else if(col.dataIndx == 'orderUnitPrice')
+			{
+				$j.extend(col,{
+					render:function(ui)
+					{
+						if(ui.rowData.isTotal) return '';
+
+						if(ui.rowData.productIsVariablePrice == 'true')
+							return accounting.formatMoney(ui.rowData.salesOrderLineVariantUnitPrice,'$',6);
+						return accounting.formatMoney(ui.rowData.salesOrderLineUnitPrice);
+					}
+				});
+			}
+
+			else if(col.dataIndx == 'billingLineName')
+			{
+				$j.extend(col,{
+					render:function(ui)
+					{
+						if(ui.rowData.isTotal) return '';
+
+						var $myObj = $j('<a>').html(ui.rowData.billingLineName).attr('href','/'+ui.rowData.idBillingLine).attr('target','_blank');
+						var myHTML = $j('<wrap>').append($myObj).html();
+						$myObj = null;
+						return myHTML;
+					}
+				});
+			}		
+
+			else if(col.dataIndx == 'convertToAP')
+			{
+				$j.extend(col,{
+					render:function(ui)
+					{
+						if(ui.rowData.isTotal) return accounting.formatMoney(ui.rowData[col.dataIndx]);
+
+						var isSelected = $j('#billingLines').pqGrid( "selection",{type:'row', method:'isSelected', rowIndx:ui.rowIndx});
+						var amount = ui.rowData.convertToAP;
+						if(amount === undefined || amount === null) amount = ui.rowData.billingLineBalance;
+						if(amount === undefined || amount === null) amount = '0';
+						amount = parseFloat(amount).toFixed(2);
+
+						if(isSelected)
+						{
+							return accounting.formatMoney(amount);
+						}
+						else
+						{
+	                        var myHTML = '';
+	                        myHTML += '<input size="8" ';
+	                        myHTML += ' value="'+amount+'"/>';
+
+							return myHTML;							
+						}
+					}
+				});				
+			}
+
+			else if(col.dataIndx == 'writeDown')
+			{
+				$j.extend(col,{
+					render:function(ui)
+					{
+						if(ui.rowData.isTotal) return accounting.formatMoney(ui.rowData[col.dataIndx]);
+
+						var isSelected = $j('#billingLines').pqGrid( "selection",{type:'row', method:'isSelected', rowIndx:ui.rowIndx});
+						var amount = ui.rowData.writeDown;
+						if(amount === undefined || amount === null) amount = '0';
+						amount = parseFloat(amount).toFixed(2);
+
+						if(isSelected)
+						{
+							return accounting.formatMoney(amount);
+						}
+						else
+						{
+	                        var myHTML = '';
+	                        myHTML += '<input size="8" ';
+	                        myHTML += ' value="'+amount+'"/>';
+
+							return myHTML;							
+						}
+					}
+				});				
+			}
+
+            else if(col.dataIndx == 'state')
+            {
+                $j.extend(col,{
+                	render:function(ui)
+                	{
+                		if(ui.rowData.isTotal) return '';
+                	},
+                    filter:
+                    {
+                        type:'select',
+                        condition: 'equal',
+                        prepend: { '': '--All--' },
+                        //valueIndx: col.dataIndx,
+                        //labelIndx: col.dataIndx,
+                        listeners: ['change'],
+                        value:'',
+                        cache:null,
+                        //options:  [ { state: false, state: true }] 
+                        options:  [ { true: 'selected' }] 
+                    }
+                });
+            }
+
+
+
+		});
+
+		var $gridDiv = $j('#billingLines');
+
+		$gridDiv.pqGrid(gridObj);
+
+		//gGrid.appendExportLink($gridDiv);
+
+		gGrid.appendButtonClearFilters($gridDiv);
+
+		$gridDiv.find('div.pq-toolbar select').val(gridObj.freezeCols);
+
+		$gridDiv.on('pqgridrefresh', function(event, ui)
+		{
+	        fn_refreshTotal_billingLines($j(this),ui.pageData);
+		});
+
+		$gridDiv.on('pqgridbeforecheck',function(event,ui)
+		{
+			/*
+			var convertToAP = $gridDiv.pqGrid( "getCell", {rowIndx:ui.rowIndx, dataIndx: "convertToAP"}).find('input').val();
+			if(convertToAP == '' || isNaN(convertToAP)) convertToAP = '0';
+			convertToAP = parseFloat(convertToAP);
+
+			var writeDown = $gridDiv.pqGrid( "getCell", {rowIndx:ui.rowIndx, dataIndx: "writeDown"}).find('input').val();
+			if(writeDown == '' || isNaN(writeDown)) writeDown = '0';
+			writeDown = parseFloat(writeDown);
+
+			if((convertToAP + writeDown) > parseFloat(ui.rowData.billingLineBalance))
+			{
+				alert('The new balance for the selected billing line would be negative; adjust the input values for this line, and try again.');
+				return false;
+			}
+			*/
+		});
+
+		$gridDiv.on('pqgridrowselect',function(event,ui)
+		{
+			var convertToAP = $gridDiv.pqGrid( "getCell", {rowIndx:ui.rowIndx, dataIndx: "convertToAP"}).find('input').val();
+			if(convertToAP == '' || isNaN(convertToAP)) convertToAP = '0';
+			ui.rowData.convertToAP = convertToAP;
+
+			var writeDown = $gridDiv.pqGrid( "getCell", {rowIndx:ui.rowIndx, dataIndx: "writeDown"}).find('input').val();
+			if(writeDown == '' || isNaN(writeDown)) writeDown = '0';
+			ui.rowData.writeDown = writeDown;
+
+			$gridDiv.pqGrid( "refreshCell", {rowIndx:ui.rowIndx, dataIndx:'convertToAP'});
+			$gridDiv.pqGrid( "refreshCell", {rowIndx:ui.rowIndx, dataIndx:'writeDown'});
+
+			$gridDiv.pqGrid('refresh');
+		});
+
+		$gridDiv.on('pqgridrowunselect',function(event,ui)
+		{
+			$gridDiv.pqGrid( "refreshCell", {rowIndx:ui.rowIndx, dataIndx:'convertToAP'});
+			$gridDiv.pqGrid( "refreshCell", {rowIndx:ui.rowIndx, dataIndx:'writeDown'});
+
+			$gridDiv.pqGrid('refresh');
+		});
+
+		gridObj = null;
+	}
+
+	function fn_refreshTotal_billingLines($gridDiv,pageData)
+	{
+        var totalRow = {isTotal:true, pq_rowcls:'total'};
+        var totalColumns = [];
+        jQuery.each($gridDiv.pqGrid('getColModel'), function(i,col)
+        {
+            if(col.gTotal)
+            {
+                totalRow[col.dataIndx] = +0;
+                totalColumns.push(col.dataIndx);
+            }
+            else
+            {
+                totalRow[col.dataIndx] = null;
+            }
+        });
+
+        //aggregate the totals
+        jQuery.each(pageData, function(i,row)
+        {
+            jQuery.each(totalColumns, function(j,dataIndx)
+            {
+                if(!isNaN(row[dataIndx]))
+                {
+                	if(row.state)
+                    totalRow[dataIndx] += parseFloat(row[dataIndx]);
+                }
+            });
+        });
+
+        if($gridDiv.find('.pq-grid-summary').length == 0)
+            jQuery("<div class='pq-grid-summary'></div>").prependTo($gridDiv.find('.pq-grid-bottom'));
+        $gridDiv.pqGrid("createTable", {data:[totalRow], $cont: $gridDiv.find('div.pq-grid-summary')});
+
+        totalRow = null;
+        totalColumns = null; 		
+	}
+
+	function fn_refreshGrid_billingLines()
+	{
+		gSpinner.show();
+
+		var $gridDiv = $j('#billingLines');
+
+		Visualforce.remoting.Manager.invokeAction(
+			'{!$RemoteAction.gcAccountPayable_ConvertAR.retrieveBillingLines}',
+			'{!Id}',
+			function(result,event)
+			{
+				if(event.status)
+				{
+					$gridDiv.pqGrid('filter',{oper:'replace', data:[{dataIndx:'state', value:''}]});
+					gGrid.refreshGrid_callback($gridDiv,result)
+					$gridDiv.pqGrid( "scrollColumn",{dataIndx:"state"});
+				}
+				else
+				{
+					alert(event.message); gSpinner.hide();
+				}
+			},
+			{buffer:true, escape:true, timeout:120000});
+	}
+
+	function fn_createCreditMemo()
+	{
+		if({!AcctSeed__Account_Payable__c.Posted__c} == true)
+		{
+			alert('This AP cannot be used to convert A/R, because this A/P has already been posted.  Either return to the A/P and unpost it, or create a new A/P.');
+			return;
+		}
+
+		gSpinner.show();
+
+		var data = [];
+		$j.each($j("#billingLines").pqGrid('selection',{ type:'row', method:'getSelection'}), function(i,row)
+		{
+			var rowData = $j.extend({},row.rowData);
+				rowData.state=false;
+				rowData.pq_rowselect=false;
+
+			rowData.balanceAfter = +0;
+			if(!isNaN(rowData.billingLineBalance)) 
+			rowData.balanceAfter += parseFloat(rowData.billingLineBalance);
+			if(!isNaN(rowData.convertToAP))
+			rowData.balanceAfter -= parseFloat(rowData.convertToAP);
+			if(!isNaN(rowData.writeDown))
+			rowData.balanceAfter -= parseFloat(rowData.writeDown);
+
+			//if(rowData.balanceAfter > -0.005)
+			data.push(rowData);
+		});
+
+		if(data.length == 0)
+		{
+			alert('select one or more rows');
+			gSpinner.hide();
+			return;
+		}
+
+		Visualforce.remoting.Manager.invokeAction(
+			'{!$RemoteAction.gcAccountPayable_ConvertAR.createCreditMemo}',
+			'{!Id}',data,
+			function(result,event)
+			{
+				if(event.status)
+				{
+					fn_refreshAll();
+					gSpinner.hide();
+				}
+				else
+				{
+					alert(event.message); 
+					gSpinner.hide();
+				}
+			},
+			{buffer:true, escape:true, timeout:120000}
+		);
+	}
+
+
+	function fn_initGrid_creditLinesExisting()
+	{
+		var gridObj = {title:"Credit Memo Lines",
+						collapsible:{on:false,collapsed:false,toggle:false},
+						columnTemplate: {minWidth:75, sortable:true},
+						dataModel:{data:null, sorting:'local', location:'local', sortDir:'up'}, 
+						dragColumns:{enabled:false},
+						editable:false,
+						filterModel:{on:true, mode:'AND', header:true},
+						freezeCols:5,
+						freezeRows:0,
+						height:300,
+						historyModel:{on:false},
+						hoverMode:'row',
+						hwrap:false,
+						numberCell:{show:true},
+						pageModel: {type:null},
+						pasteModel:{on:false},
+						resizable: true,
+						roundCorners: false,
+						//scrollModel: {pace: 'fast', autoFit: false, lastColumn: 'none', theme: false, flexContent: undefined },
+						selectionModel:{type:'null'}, //do not use fireSelectChange because it only passes SELECTED rows (not UNSELECTED rows); use rowSelect and rowUnselect events instead.
+						showBottom:true,
+						showHeader:true,
+						showTitle:true,
+						showTop:true,
+						showToolbar:true,
+						sortable:true,
+						swipeModel:{on:false},
+						track:false,
+						trackModel:{on:false},
+						virtualX: false,
+						//virtualXHeader: false,
+						virtualY: false,
+						//width:'auto',
+						wrap:false};
+
+gridObj.colModel=[
+{dataIndx:"billingName", 			title:"Credit<br/>Memo", 				align:"center", dataType:"string",  gFilter:"text", width:100},
+{dataIndx:"billingLineName", 		title:"Credit<br/>Memo Line", 			align:"center", dataType:"string",  gFilter:"text", width:100},
+{dataIndx:"customerName",			title:"Customer",						align:"left",	dataType:"string",	gFilter:"text", width:200},	
+{dataIndx:"billingNameCustomer", 	title:"Customer<br/>Billing", 			align:"center", dataType:"string",  gFilter:"text", width:100},
+{dataIndx:"billingNameVendor", 		title:"Vendor<br/>Billing", 			align:"center", dataType:"string",  gFilter:"text", width:100},
+{dataIndx:"salesOrderLineName", 	title:"Sales Order<br/>Line", 			align:"center", dataType:"string",  gFilter:"text", width:100},
+{dataIndx:"productName", 			title:"Product Name", 					align:"left", 	dataType:"string",	gFilter:"text", width:200, hidden:true},
+{dataIndx:"productCode", 			title:"Product Code", 					align:"left", 	dataType:"string",	gFilter:"text", minWidth:100},
+{dataIndx:"lotName", 				title:"Lot #", 							align:"left", 	dataType:"string",	gFilter:"text", maxWidth:100},
+{dataIndx:"glName",					title:"Credit&nbsp;<br/>Account",		align:"left",  dataType:"string",  gFilter:"select",  width:150},
+{dataIndx:"billingLineTotal",		title:"Credit&nbsp;<br/>Amount",		align:"right",  dataType:"float",   gFormat:'money',  gTotal:true, maxWidth:100},
+{dataIndx:"amountAP2AR",			title:"Converted&nbsp;<br/>AR",			align:"right",  dataType:"float",   gFormat:'money',  gTotal:true, maxWidth:100},
+{dataIndx:"amountOther",			title:"Decreased&nbsp;<br/>Revenue",	align:"right",  dataType:"float",   gFormat:'money',  gTotal:true, maxWidth:100}];
+//{dataIndx:"scrollSpacer", minWidth:15, maxWidth:15}];
+
+		gGrid.initFormat(gridObj.colModel);
+		gGrid.initFilter(gridObj.colModel);
+
+		gridObj.toolbar={
+
+           items: [
+                { type: '<span>Freeze Columns: </span>' },
+                { type: 'select', options: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,12,13,14,15],
+                	listeners: [
+	                    {
+	                        change: function (evt) {
+	                            $j('#billingLines').pqGrid("option", "freezeCols", $j(this).val());
+	                            $j('#billingLines').pqGrid("refreshView");
+	                        }
+	                    }
+                	]
+                }
+                ]
+        };
+
+		$j.each(gridObj.colModel, function(i,col)
+		{
+			if(col.dataIndx == 'billingName')
+			{
+				$j.extend(col,{
+					render:function(ui)
+					{
+						if(ui.rowData[col.dataIndx] === undefined ||
+						   ui.rowData[col.dataIndx] === null ||
+						   ui.rowData[col.dataIndx] == '') return '';
+
+						var $myObj = $j('<a>').html(ui.rowData.billingName).attr('href','/'+ui.rowData.idBilling).attr('target','_blank');
+						var myHTML = $j('<wrap>').append($myObj).html();
+						$myObj = null;
+						return myHTML;
+					}
+				});
+			}
+			else if(col.dataIndx == 'billingLineName')
+			{
+				$j.extend(col,{
+					render:function(ui)
+					{
+						if(ui.rowData[col.dataIndx] === undefined ||
+						   ui.rowData[col.dataIndx] === null ||
+						   ui.rowData[col.dataIndx] == '') return '';
+
+						var $myObj = $j('<a>').html(ui.rowData.billingLineName).attr('href','/'+ui.rowData.idBillingLine).attr('target','_blank');
+						var myHTML = $j('<wrap>').append($myObj).html();
+						$myObj = null;
+						return myHTML;
+					}
+				});
+			}
+			else if(col.dataIndx == 'billingNameCustomer')
+			{
+				$j.extend(col,{
+					render:function(ui)
+					{
+						if(ui.rowData[col.dataIndx] === undefined ||
+						   ui.rowData[col.dataIndx] === null ||
+						   ui.rowData[col.dataIndx] == '') return '';
+
+						var $myObj = $j('<a>').html(ui.rowData.billingNameCustomer).attr('href','/'+ui.rowData.idBillingCustomer).attr('target','_blank');
+						var myHTML = $j('<wrap>').append($myObj).html();
+						$myObj = null;
+						return myHTML;
+					}
+				});
+			}
+			else if(col.dataIndx == 'billingNameVendor')
+			{
+				$j.extend(col,{
+					render:function(ui)
+					{
+						if(ui.rowData[col.dataIndx] === undefined ||
+						   ui.rowData[col.dataIndx] === null ||
+						   ui.rowData[col.dataIndx] == '') return '';
+
+						var $myObj = $j('<a>').html(ui.rowData.billingNameVendor).attr('href','/'+ui.rowData.idBillingVendor).attr('target','_blank');
+						var myHTML = $j('<wrap>').append($myObj).html();
+						$myObj = null;
+						return myHTML;
+					}
+				});
+			}
+			else if(col.dataIndx == 'salesOrderLineName')
+			{
+				$j.extend(col,{
+					render:function(ui)
+					{
+						if(ui.rowData[col.dataIndx] === undefined ||
+						   ui.rowData[col.dataIndx] === null ||
+						   ui.rowData[col.dataIndx] == '') return '';
+
+						var $myObj = $j('<a>').html(ui.rowData.salesOrderLineName).attr('href','/'+ui.rowData.idSalesOrderLine).attr('target','_blank');
+						var myHTML = $j('<wrap>').append($myObj).html();
+						$myObj = null;
+						return myHTML;
+					}
+				});
+			}				
+		});
+
+		var $gridDiv = $j('#creditLinesExisting');
+
+		$gridDiv.pqGrid(gridObj);
+
+		//gGrid.appendExportLink($gridDiv);
+
+		gGrid.appendButtonClearFilters($gridDiv);
+
+		$gridDiv.find('div.pq-toolbar select').val(gridObj.freezeCols);
+
+		$gridDiv.on('pqgridrefresh', function(event, ui)
+		{
+	        gGrid.refreshTotal($j(this),ui.pageData);
+		});
+
+		gridObj = null;
+	}
+
+	function fn_refreshGrid_creditLinesExisting()
+	{
+		gSpinner.show();
+		var $gridDiv = $j('#creditLinesExisting');
+
+		Visualforce.remoting.Manager.invokeAction(
+			'{!$RemoteAction.gcAccountPayable_ConvertAR.retrieveCreditLines}',
+			'{!Id}',
+			function(result,event)
+			{
+				if(event.status)
+				{
+					gGrid.refreshGrid_callback($gridDiv,result);
+					$gridDiv.pqGrid( "scrollColumn",{dataIndx:"amountOther"});
+				}
+				else 
+				{
+					alert(event.message); gSpinner.hide();
+				}
+			},
+			{buffer:true, escape:true, timeout:120000});	
+	}
+
+	function fn_undoCreditMemoAll()
+	{
+		if({!AcctSeed__Account_Payable__c.Posted__c} == true)
+		{
+			alert('This AP has already been posted.  Unpost the AP before attempting to undo the A/R credit memos.');
+			return;
+		}
+
+		var x = window.confirm('Are you sure?');
+		if(x == false) return;
+
+		gSpinner.show();
+
+		Visualforce.remoting.Manager.invokeAction(
+			'{!$RemoteAction.gcAccountPayable_ConvertAR.undoCreditMemoAll}',
+			'{!Id}',
+			function(result,event){if(event.status){fn_refreshAll(); gSpinner.hide();} else {alert(event.message); gSpinner.hide();}},
+			{buffer:true, escape:true, timeout:120000});		
+	}
+
+</script>
+</head>
+<body>
+	<apex:form >
+		<apex:actionFunction name="fn_rerenderRelated" reRender="relatedLists"/>
+		<apex:actionFunction name="fn_rerenderDetail" reRender="detail"/>
+	</apex:form>
+
+	<div style="width:95%; margin:0 auto;">
+		<div style="text-align:center;">
+			<span style="font-weight:bold; font-size: x-large">Convert A/R to A/P</span>
+			<br/>
+			<button type="button" class="btn" onclick="(function(){gSpinner.show();location.href='/{!Id}';})();">Return to {!AcctSeed__Account_Payable__c.Name}</button>
+		</div>
+
+		<apex:outputPanel id="detail">
+			<apex:pageBlock mode="detail">
+					<apex:pageBlockSection showHeader="false" columns="2">
+						<apex:outputField value="{!AcctSeed__Account_Payable__c.Name}"/><apex:outputField value="{!AcctSeed__Account_Payable__c.Posted__c}"/>
+						<apex:outputField value="{!AcctSeed__Account_Payable__c.AcctSeed__Type__c}"/><apex:outputField value="{!reRenderHelper.AcctSeed__Total__c}"/>
+						<apex:outputField value="{!AcctSeed__Account_Payable__c.AcctSeed__Payee__c}"/><apex:outputField value="{!reRenderHelper.AcctSeed__Balance__c}"/>
+					</apex:pageBlockSection>	
+			</apex:pageBlock>
+		</apex:outputPanel>
+
+
+		<br/>
+		<table>
+			<tr>
+				<td width="33%" style="vertical-align:bottom;">
+					This grid is a list of all Billing Lines that are available for conversion from A/R to A/P.
+				</td>
+				<td width="34%" style="text-align:center;vertical-align:bottom;">
+					<button type="button" class="btn" onclick="fn_createCreditMemo();">Create A/R Credit Memo</button>
+				</td>
+				<td width="33%" style="vertical-align:bottom;">
+					<span style="font-weight:bold">INSTRUCTIONS:&nbsp;&nbsp;</span>
+					<br/>
+					Use the checkboxes to select one or more rows, and then click the button labeled "Create A/R Credit Memo".
+				</td>
+			</tr>
+		</table>
+
+		<div id="billingLines"></div>
+
+		<br/>
+		<br/>
+
+		<table>
+			<tr>
+				<td width="33%" style="vertical-align:bottom;">
+					This grid is a list of the A/R Credit Memo Lines that have been created under this A/P.<br/>
+					Note: an "A/R Credit Memo Line" is just a Billing Line on a Billing whose total is negative.
+				</td>
+				<td width="34%" style="text-align:center;vertical-align:bottom;">
+					<button type="button" class="btn" onclick="fn_undoCreditMemoAll();">Undo All Existing A/R Credit Memo Lines</button>
+				</td>
+				<td width="33%" style="vertical-align:bottom;">
+					<span style="font-weight:bold">INSTRUCTIONS:&nbsp;&nbsp;</span>
+					<br/>
+					Verify that the "Converted A/R" total of these A/R Credit Memo Lines is equal to the AP Line for AR-to-AP Conversion in the list below.&nbsp;&nbsp;If so, post {!AcctSeed__Account_Payable__c.Name} and apply it against a Vendor Invoice.  If not, undo and/or investigate.
+				</td>
+			</tr>			
+		</table>
+
+		<div id="creditLinesExisting"></div>
+		<br/>
+
+		<div id="outputPanelRelatedLists">
+			<apex:outputPanel id="relatedLists">
+				<apex:relatedList subject="{!Id}" list="AcctSeed__Project_Account_Payable_Lines__r"/>
+				<script>
+					//hide the list button for "New Account Payable Line"
+					$j('#outputPanelRelatedLists').find('input.btn').hide();
+				</script>
+			</apex:outputPanel>
+		</div>
+		<div style="text-align:center;">
+			<button type="button" class="btn" onclick="(function(){gSpinner.show();location.href='/{!Id}';})();">Return to {!AcctSeed__Account_Payable__c.Name}</button>
+		</div>		
+	</div>
+</body>
+</apex:page>

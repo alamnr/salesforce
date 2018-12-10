@@ -1,0 +1,15 @@
+<apex:component controller="gcDocument_USCIssues" layout="none" access="global">
+
+<apex:attribute name="attrIdUSCIssue" assignTo="{!USCIDString}" type="String" access="global" description="The Ids of the Issues."/>
+
+Please see attached some issues we found in the latest Sales Report that you sent us.  
+
+The highlighted cell shows the issue of what is in the sales report vs what we have as the correct value in our system.
+
+Please let me advise if this is an error in our records, or if this is an error on your side.
+
+Thank you
+{!$User.FirstName} {!$User.LastName}
+
+
+</apex:component>

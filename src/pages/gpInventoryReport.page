@@ -1,0 +1,792 @@
+<apex:page controller="gcInventoryReport" showHeader="true" sidebar="true" cache="false" readOnly="true">
+
+<head>
+<style>
+tr.pq-row-select td{
+    background-color:yellow;
+}
+tr.total td{
+    font-weight: bold;
+}
+div.pq-grid-footer{
+    display:none;
+}
+</style>
+<style>
+#maps{
+    width:100%;
+    height: 400px;
+    border: 1px solid #aaa;
+}
+table.infobubble-tbl th{
+    font-weight: bold;
+    background: #D8D8D8;
+    border: 1px #D8D8D8 solid;
+    padding: 1px;
+}
+table.infobubble-tbl td{
+    border: 1px #D8D8D8 solid;
+    padding: 1px;
+}
+table.infobubble-tbl .info-warehouse{
+    font-weight: bold;
+    font-style: italic;
+    padding: 5px;
+    background: #F5ECCE;
+}
+</style>
+<apex:stylesheet value="{!URLFOR($Resource.GMBLJS__jQueryUI,'/jquery-ui/jquery-ui.min.css')}"/>
+<apex:stylesheet value="{!URLFOR($Resource.GMBLJS__pqGridPro241,'/pqgrid.min.css')}"/>
+
+</head>
+<body>
+    <div style="width:90%; margin:0 auto">
+        <table width="100%">
+            <tr style="text-align:center;" id="datepickerContainer">
+                <td colspan="2">
+                    Inventory as of:&nbsp;&nbsp;<input type="text" id="datepicker" readonly="true"/>
+                </td>
+            </tr>
+            <tr>
+                <td width="35%">
+                    <div><div id="warehouse"></div></div>
+                </td>
+                <td width="65%">
+                    <div><div id="product"></div></div>
+                </td>
+            </tr>
+            <tr>
+                <td colspan="2">
+                    <div><div id="detail"></div></div>
+                </td>
+            </tr>
+            <tr>
+                <td colspan="2">
+                    <div id="maps"></div>
+                </td>
+            </tr>
+        </table>
+    </div>
+</body>
+
+<apex:includeScript value="{!$Resource.GMBLJS__jQuery}"/>
+<apex:includeScript value="{!URLFOR($Resource.GMBLJS__jQueryUI,'/jquery-ui/jquery-ui.min.js')}"/>
+<apex:includeScript value="{!$Resource.GMBLJS__accountingJS}"/>
+<apex:includeScript value="{!$Resource.GMBLJS__ExcellentExport}"/>
+
+<apex:includeScript value="{!URLFOR($Resource.GMBLJS__pqGridPro241,'/pqgrid.min.js')}"/>
+
+<apex:includeScript value="{!$Resource.GMBLJS__gsrSpinner}"/>
+<apex:includeScript value="{!$Resource.gGrid2}"/>
+
+<script type="text/javascript" src="https://maps.google.com/maps/api/js?sensor=false"></script>
+<apex:includeScript value="{!$Resource.MapMarkerClusterer}"/>
+<apex:includeScript value="{!$Resource.MapInfoBubble}"/>
+
+<script>function setFocusOnLoad() {}</script>
+<script type="text/javascript">
+
+    $j = jQuery.noConflict();
+
+    $j(document).ready(function()
+    {
+        initDatePicker();
+        initGrid_warehouse();
+        initGrid_product();
+        initGrid_detail();
+
+        initMap();
+    });
+
+    accounting.settings = {
+        currency: {
+            symbol : "$",   // default currency symbol is '$'
+            format: "%s%v", // controls output: %s = symbol, %v = value/number (can be object: see below)
+            decimal : ".",  // decimal point separator
+            thousand: ",",  // thousands separator
+            precision : 2   // decimal places
+        },
+        number: {
+            precision : 0,  // default precision on numbers is 0
+            thousand: ",",
+            decimal : "."
+        }
+    }
+
+    function initDatePicker()
+    {
+        $j('#datepicker').datepicker({'showButtonPanel':true});
+
+        $j('#datepicker').datepicker('setDate', new Date());
+
+        $j('#datepicker').change(function()
+        {
+            $j('#warehouse').pqGrid('selection',{type:'row',method:'removeAll'});
+            $j('#product').pqGrid('selection',{type:'row',method:'removeAll'});
+            refreshGrid_warehouse();
+            refreshGrid_product();
+            refreshGrid_detail();
+        });
+    }
+
+    function initGrid_warehouse()
+    {
+        var gridObj = {title:"Inventory by Warehouse",
+                        collapsible:{on:false,collapsed:false,toggle:false},
+                        columnTemplate: {minWidth:10, sortable:true},
+                        dataModel:{data:[], sorting:'local', location:'local', sortDir:'up', sortIndx:'warehouseName'}, 
+                        detailModel:{cache:false},
+                        dragColumns:{enabled:false},
+                        editable:false,
+                        filterModel:{on:true, mode:'AND', header:true, type:'local'},
+                        freezeCols:0,
+                        freezeRows:0,
+                        height:300,
+                        historyModel:{on:false},
+                        hoverMode:'row',
+                        hwrap:false,
+                        numberCell:{show:false},
+                        pageModel: {type:null},
+                        pasteModel:{on:false},
+                        resizable: true,
+                        roundCorners: false,
+                        scrollModel: {autoFit:true},
+                        selectionModel: {type:'row', mode:'range', fireSelectChange:true},
+                        showBottom:true,
+                        showHeader:true,
+                        showTitle:true,
+                        showTop:true,
+                        showToolbar:true,
+                        sortable:true,
+                        swipeModel:{on:false},
+                        track:false,
+                        virtualX: false,
+                        //virtualXHeader: false,
+                        virtualY: false,
+                        width:'auto',
+                        wrap:false};
+
+        gridObj.colModel=[{dataIndx:"warehouseName",       title:"Warehouse Name",       align:"left",   dataType:"string", gFilter:"text"},
+                          {dataIndx:"warehouseNum",        title:"Warehouse Number",     align:"left",   dataType:"string", gFilter:"text"},   
+                          {dataIndx:"amt",      title:"Cost",           align:"right",  dataType:"float", gFormat:'money', gTotal:true, maxWidth:100},
+                          {dataIndx:"scrollSpacer", minWidth:15, maxWidth:15}];
+
+        gGrid.initFormat(gridObj.colModel);
+        gGrid.initFilter(gridObj.colModel);
+
+        $j.each(gridObj.colModel, function(i,col)
+        {
+            if(col.dataIndx == 'amt')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.isTotal || parseFloat(ui.rowData.amt) <= (-0.01) || parseFloat(ui.rowData.amt) >= 0.01)
+                            return accounting.formatMoney(ui.rowData.amt);
+                        return accounting.formatMoney(ui.rowData.amt,'$',6);
+                    }
+                });
+            }
+        });
+
+        var $gridDiv = $j('#warehouse');
+
+        $gridDiv.pqGrid(gridObj);
+
+        gGrid.appendExportLink($gridDiv);
+
+        gGrid.appendButtonClearSelection($gridDiv);
+
+        $gridDiv.on('pqgridrefresh', function(event, ui)
+        {
+            gGrid.refreshTotal($j(this),ui.pageData);
+        });
+
+        $gridDiv.on('pqgridselectchange',function(event,ui)
+        {
+            $j('#product').pqGrid( "setSelection", null );
+            refreshGrid_detail();
+        });
+
+        refreshGrid_warehouse();
+
+        gridObj = null;
+    }
+
+    function refreshGrid_warehouse()
+    {
+        gSpinner.show();
+        var $gridDiv = $j('#warehouse');
+
+        var filter = {'dateThru':[$j('#datepicker').val()]};
+        var groupBy = ['idWarehouse'];
+
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.gcInventoryReport.inventorySummary}',
+            filter, groupBy,
+            function(result,event){
+                if(event.status){
+                    gGrid.refreshGrid_callback($gridDiv,result);
+                }
+                else{
+                    alert(event.message); 
+                }
+                gSpinner.hide();
+            },
+            {buffer:true, escape:true, timeout:120000});
+
+        filter = null;
+        groupBy = null;
+    }
+
+    function initGrid_product()
+    {
+        var gridObj = {title:"Inventory by Product",
+                        collapsible:{on:false,collapsed:false,toggle:false},
+                        columnTemplate: {minWidth:10, sortable:true},
+                        dataModel:{data:null, sorting:'local', location:'local', sortDir:'up', sortIndx:'productName'},
+                        detailModel:{cache:false},
+                        dragColumns:{enabled:false},
+                        editable:false,
+                        filterModel:{on:true, mode:'AND', header:true, type:'local'},
+                        freezeCols:0,
+                        freezeRows:0,
+                        height:300,
+                        historyModel:{on:false},
+                        hoverMode:'row',
+                        hwrap:false,
+                        numberCell:{show:false},
+                        pageModel: {type:null},
+                        pasteModel:{on:false},
+                        resizable: true,
+                        roundCorners: false,
+                        scrollModel: {autoFit:true},
+                        selectionModel: {type:'row', mode:'range', fireSelectChange:true},
+                        showBottom:true,
+                        showHeader:true,
+                        showTitle:true,
+                        showTop:true,
+                        showToolbar:true,
+                        sortable:true,
+                        swipeModel:{on:true},
+                        track:false,
+                        virtualX: false,
+                        //virtualXHeader: false,
+                        virtualY: false,
+                        width:'auto',
+                        wrap:false};
+
+        gridObj.colModel=[{dataIndx:"productName",              title:"Product Name",       align:"left",   dataType:"string",  gFilter:"text"},
+                          {dataIndx:"productCode",              title:"Product Code",       align:"left",   dataType:"string",  gFilter:"text", maxWidth:150},
+                          {dataIndx:"qty",      title:"Units",              align:"right",  dataType:"float", gFormat:'number', maxWidth:75},
+                          {dataIndx:"amt",          title:"Cost",               align:"right",  dataType:"float", gFormat:'money', gTotal:true, maxWidth:100},
+                          {dataIndx:"scrollSpacer", minWidth:15, maxWidth:15}];
+
+        gGrid.initFormat(gridObj.colModel);
+        gGrid.initFilter(gridObj.colModel);
+
+        $j.each(gridObj.colModel, function(i,col)
+        {
+            if(col.dataIndx == 'amt')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.isTotal || parseFloat(ui.rowData.amt) <= (-0.01) || parseFloat(ui.rowData.amt) >= 0.01)
+                            return accounting.formatMoney(ui.rowData.amt);
+                        return accounting.formatMoney(ui.rowData.amt,'$',6);
+                    }
+                });
+            }
+        });
+
+        var $gridDiv = $j('#product');
+
+        $gridDiv.pqGrid(gridObj);
+
+        gGrid.appendExportLink($gridDiv);
+
+        gGrid.appendButtonClearSelection($gridDiv);
+
+        $gridDiv.on('pqgridrefresh', function(event, ui)
+        {
+            gGrid.refreshTotal($j(this),ui.pageData);
+        });        
+
+        $gridDiv.on('pqgridselectchange',function(event,ui)
+        {
+            $j('#warehouse').pqGrid( "setSelection", null );
+            refreshGrid_detail();
+        });
+
+        refreshGrid_product();
+
+        gridObj = null;
+    }
+
+    function refreshGrid_product()
+    {
+        gSpinner.show();
+        var $gridDiv = $j('#product');
+
+        var filter = {'dateThru':[$j('#datepicker').val()]};
+        var groupBy = ['idProduct'];
+
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.gcInventoryReport.inventorySummary}',
+            filter, groupBy,
+            function(result,event){
+                if(event.status){
+                    gGrid.refreshGrid_callback($gridDiv,result);
+                }
+                else{
+                    alert(event.message);
+                }
+                gSpinner.hide();
+            },
+            {buffer:true, escape:true, timeout:120000});
+
+        filter = null;
+        groupBy = null;
+    }
+
+    function initGrid_detail()
+    {
+        var gridObj = {title:"Inventory Detail",
+                        collapsible:{on:false,collapsed:false,toggle:false},
+                        columnTemplate: {minWidth:10, sortable:true},
+                        dataModel:{data:null, sorting:'local', location:'local', sortDir:'up'},
+                        detailModel:{cache:false},
+                        dragColumns:{enabled:false},
+                        editable:false,
+                        filterModel:{on:true, mode:'AND', header:true, type:'local'},
+                        freezeCols:0,
+                        freezeRows:0,
+                        height:300,
+                        historyModel:{on:false},
+                        hoverMode:'row',
+                        hwrap:false,
+                        numberCell:{show:true},
+                        pageModel: {type:null},
+                        pasteModel:{on:false},
+                        resizable: true,
+                        roundCorners: false,
+                        scrollModel: {autoFit:true},
+                        selectionModel: {type:'row', mode:'single'},
+                        showBottom:true,
+                        showHeader:true,
+                        showTitle:true,
+                        showTop:true,
+                        showToolbar:true,
+                        sortable:true,
+                        swipeModel:{on:false},
+                        track:false,
+                        virtualX: false,
+                        //virtualXHeader: false,
+                        virtualY: false,
+                        width:'auto',
+                        wrap:false};
+
+        gridObj.colModel=[{dataIndx:"warehouseName",       title:"Warehouse Name",    align:"left",   dataType:"string",  gFilter:"text"},
+                          {dataIndx:"warehouseNum",        title:"Warehouse Number",  align:"left",   dataType:"string",  gFilter:"text"},
+                          {dataIndx:"productName",          title:"Product Name",       align:"left",   dataType:"string",  gFilter:"text"},
+                          {dataIndx:"productCode",          title:"Product Code",       align:"left",   dataType:"string",  gFilter:"text"},
+                          {dataIndx:"lotName",              title:"Lot #",              align:"left",   dataType:"string",  gFilter:"text"},
+                          {dataIndx:"lotExpirationDate",    title:"Expiration",         align:"center", dataType:"date", maxWidth:75},
+                          {dataIndx:"lotVariantQty",        title:"Var.Units",          align:"center", dataType:"float", gFormat:'number', maxWidth:75},
+                          {dataIndx:"qty",                  title:"Units",              align:"right",  dataType:"float", gFormat:'number', gTotal:true, maxWidth:75},
+                          {dataIndx:"avg",                  title:"Unit Cost",          align:"right",  dataType:"float", gFormat:'money', maxWidth:100},
+                          {dataIndx:"amt",                  title:"Total Cost",         align:"right",  dataType:"float", gFormat:'money', maxWidth:100, gTotal:true},
+                          {dataIndx:"scrollSpacer", minWidth:15, maxWidth:15}];
+
+        gGrid.initFormat(gridObj.colModel);
+        gGrid.initFilter(gridObj.colModel);
+
+        $j.each(gridObj.colModel, function(i,col)
+        {
+            if(col.dataIndx == 'lotName')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.lotName && ui.rowData.lotName != null && ui.rowData.lotName.length > 0)
+                        var $myObj = $j('<a>').html(ui.rowData.lotName).attr('href','/'+ui.rowData.idLot).attr('target','_blank');
+                        var myHTML = $j('<wrap>').append($myObj).html();
+                        $myObj = null;
+                        return myHTML;
+                    }
+                });
+            }
+
+            else if(col.dataIndx == 'productName')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        var $myObj = $j('<a>').html(ui.rowData.productName).attr('href','/'+ui.rowData.idProduct).attr('target','_blank');
+                        var myHTML = $j('<wrap>').append($myObj).html();
+                        $myObj = null;
+                        return myHTML;
+                    }
+                });
+            }
+
+            else if(col.dataIndx == 'avg')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.productIsVariablePrice 
+                            && !isNaN(ui.rowData.lotVariantQty) && parseFloat(ui.rowData.lotVariantQty) != 0 
+                            && parseFloat(ui.rowData.qty) != 0
+                            && !ui.rowData.isTotal)
+                        {
+                            var cost = ui.rowData.avg / ui.rowData.lotVariantQty;
+                            return accounting.formatMoney(cost,'$',6);
+                        }
+                        else if(!ui.rowData.isTotal)
+                            return accounting.formatMoney(ui.rowData.avg,'$',6);
+                    }
+                });
+            }
+            else if(col.dataIndx == 'amt')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.isTotal || parseFloat(ui.rowData.amt) <= (-0.01) || parseFloat(ui.rowData.amt) >= 0.01)
+                            return accounting.formatMoney(ui.rowData.amt);
+                        return accounting.formatMoney(ui.rowData.amt,'$',6);
+                    }
+                });
+            }
+        });
+
+        var $gridDiv = $j('#detail');
+
+        $gridDiv.pqGrid(gridObj);
+
+        gGrid.appendExportLink($gridDiv);
+
+        gGrid.appendButtonClearFilters($gridDiv);
+
+        $gridDiv.on('pqgridrowselect',function(event,ui)
+        {
+            //$j("#detail").pqGrid( "selection", { type:'row', method:'removeAll' } );
+            //$j("#detail").pqGrid("selection", { type: 'row', method: 'add', rowIndx: ui.rowIndx});
+            setMapCenter(ui.rowData);
+        });
+
+        $gridDiv.on('pqgridrefresh', function(event, ui)
+        {
+            gGrid.refreshTotal($j(this),ui.pageData);
+            fn_setLocationMap(ui.pageData);
+        });
+
+        gridObj = null;
+    }
+
+    function refreshGrid_detail()
+    {
+        gSpinner.show();
+
+        var $gridDiv = $j('#detail');
+        var filter = {'dateThru':[$j('#datepicker').val()]};
+
+        //collect the ids of the selected products
+        var idProductArray = [];
+        $j.each($j('#product').pqGrid( "selection",{type:'row', method:'getSelection'}), function(i,row)
+        {
+            idProductArray.push(row.rowData.idProduct);
+        });
+        if(idProductArray.length > 0)
+        {
+            $j.extend(filter,{'idProduct':idProductArray});
+        }
+
+        //collect the ids of the select warehouses
+        var idWarehouseArray = [];
+        $j.each($j('#warehouse').pqGrid( "selection",{type:'row', method:'getSelection'}), function(i,row)
+        {
+            idWarehouseArray.push(row.rowData.idWarehouse);
+        });
+        if(idWarehouseArray.length > 0)
+        {
+            $j.extend(filter,{'idWarehouse':idWarehouseArray});
+        }
+
+        //if no products or warehouses are selected, then empty the grid, otherwise refresh the grid.
+        if(idWarehouseArray.length == 0 && idProductArray.length == 0)
+        {
+            gGrid.refreshGrid_callback($gridDiv,[]);
+            gSpinner.hide();
+        }
+        else
+        {
+        //console.log('filter: '+JSON.stringify(filter));
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.gcInventoryReport.inventorySummary}',
+            filter,['idWarehouse','idLot'],
+            function(result,event){
+                if(event.status) 
+                {
+                    gGrid.refreshGrid_callback($gridDiv,result);
+                }
+                else 
+                {
+                    alert(event.message); gSpinner.hide();
+                }
+                gSpinner.hide();
+            },
+            {buffer:true, escape:true, timeout:120000});
+        }
+        filter = null;
+        idProductArray = null;
+        idWarehouseArray = null;
+    }
+
+
+/* EVERYTHING FROM HERE DOWN IS RELATED TO THE GEOMAPPING */
+
+    var myOptions = {
+        zoom: 5,
+        mapTypeId: google.maps.MapTypeId.ROADMAP,
+        mapTypeControl: false
+    }
+    var markers = [];
+    var map;
+    var markerClusterer;
+    var geocoder;
+    var infowindow = new google.maps.InfoWindow({
+        content: "<b>Select products</b>"
+    });
+    var latlng = {};
+    var infoBubble;
+
+    function initMap()
+    {
+        map = new google.maps.Map(document.getElementById("maps"), myOptions);
+        markerClusterer = new MarkerClusterer(map,markers,{maxZoom:15,zoomOnClick: false});
+        //markerClusterer.setMaxZoom(15);
+        //markerClusterer.zoomOnClick = false;
+        //////////////////////////Maps Start
+        geocoder = new google.maps.Geocoder();
+
+        var address = "9417 Brodie Lane, Austin, Texas 78748, United States";
+
+        geocoder.geocode({
+            address: address
+        }, function(results, status) {
+            if (status == google.maps.GeocoderStatus.OK && results.length) {
+                if (status != google.maps.GeocoderStatus.ZERO_RESULTS) {
+
+                    //center map
+                    map.setCenter(results[0].geometry.location);
+                    latlng[address] = results[0].geometry.location;
+                    //create marker
+                    marker = new google.maps.Marker({
+                        position: results[0].geometry.location,
+                        //map: map,
+                        draggable: true,
+                        animation:'BOUNCE',
+                        title: "Products in Warehouses"
+                    });
+                    markers.push(marker);
+                    markerClusterer.addMarker(marker);
+                }
+
+            } else {
+                $j('#maps').html("Oops! Something went wrong.");
+            }
+        });
+
+        //google.maps.event.addListener(markerClusterer, 'mouseover', function(cluster) {
+        google.maps.event.addListener(markerClusterer, 'click', function(cluster) {
+            if(map.getZoom() >= 15)
+                map.setZoom(15);
+            // If there is any previous infobubble the close it
+            if (infoBubble && infoBubble.isOpen()) 
+                infoBubble.close();
+
+            var mks = cluster.getMarkers();
+            var info = "";
+            var dataByWarehouse = {};
+            if(mks && mks.length)
+            $j.each(mks,function(i,marker){
+                var warehouseName = marker.data.warehouseName;
+                if(dataByWarehouse[warehouseName] == undefined)
+                    dataByWarehouse[warehouseName] = [];
+
+                dataByWarehouse[warehouseName].push(marker.data);
+            })
+            var info = "<table class='infobubble-tbl' cellspacing='0' cellpadding='0' width='100%'><tr><th>Product</th><th>Lot</th><th>Qty</th><th>Exp. Date</th><th>Var. Unit</th></tr>";
+            $j.each(dataByWarehouse,function(w,d){
+                info += "<tr><td class='info-warehouse' colspan='5'><b>"+w+"</b></td></tr>";
+                $j.each(d,function(i,cont){
+                    info += "<tr>";
+                    info += "<td>"+cont.productName+"</td>";
+                    info += "<td>"+cont.lotName+"</td>";
+                    info += "<td>"+parseInt(cont.qty)+"</td>";
+                    info += "<td>"+cont.lotExpirationDate+"</td>";
+                    info += "<td>"+cont.lotVariantQty+"</td>";
+                    info += "</tr>";
+                });
+            });
+            info += "</table>";
+            infoBubble = new InfoBubble({
+              map: map,
+              content: info,
+              position: cluster.getCenter(),
+              shadowStyle: 1,
+              padding: 10,
+              visibility: true,
+              //backgroundColor: 'rgb(57,57,57)',
+              borderRadius: 4,
+              arrowSize: 10,
+              borderWidth: 1,
+              borderColor: '#2c2c2c',
+              disableAutoPan: false
+            });
+            infoBubble.open();
+        });
+        //google.maps.event.addListener(markerClusterer, 'mouseout', function(cluster) {
+            //infoBubble.close();
+        //});
+        /*google.maps.event.addListener(markerClusterer, 'click', function(cluster) {
+            if(map.getZoom() >= 15)
+                map.setZoom(15);
+            else if(infoBubble && infoBubble.isOpen()) 
+                infoBubble.close();
+        });*/
+        google.maps.event.addListener(map, 'click', function(e) {
+            if(infoBubble && infoBubble.isOpen()) 
+                infoBubble.close();
+        });
+        google.maps.event.addListener(map, 'zoom_changed', function(e) {
+            if(infoBubble && infoBubble.isOpen()) 
+                infoBubble.close();
+
+            if(map.getZoom() >= 15)
+                map.setZoom(15);
+        });     
+    }
+    //Map Functions from google
+    // Add a marker to the map and push to the array.
+    function addMarker(locations) {
+        map.setZoom(5);
+        for (i = 0; i < locations.length; i++) {
+            if(latlng[locations[i].Address] == undefined && locations[i].lat && locations[i].lng){
+                latlng[locations[i].Address] = new google.maps.LatLng(locations[i].lat, locations[i].lng);
+            }
+
+            if (latlng[locations[i].Address] == undefined) {
+                geocoder.geocode({
+                    'address': locations[i].Address
+                }, (function(i, p) {
+                    return function(results, status) {
+                        var data = locations[i];
+                        if (status == google.maps.GeocoderStatus.OK) {
+                            data.lotVariantQty = accounting.formatNumber(data.lotVariantQty);
+                            //var vQ = (data.lotVariantQty != undefined)?data.lotVariantQty:'';
+                            var title = '<b>Product:</b> ' + data.productName +', <b>Lot:</b> ' + data.lotName + ', <b>Qty:</b> ' + parseInt(data.qty) + ', <b>Exp Date:</b>' + data.lotExpirationDate + ', <b>Var.Unit:</b>'+ data.lotVariantQty;
+                            //alert(results[0].geometry.location);
+                            map.setCenter(results[0].geometry.location);
+                            latlng[locations[i].Address] = results[0].geometry.location;
+                            marker = new google.maps.Marker({
+                                position: results[0].geometry.location,
+                                icon: 'https://chart.googleapis.com/chart?chst=d_bubble_text_small&chld=bb|' + ([parseInt(data.qty)]) + '|FF776B|000000',
+                                draggable: true,
+                                animation: 'BOUNCE',
+                                description: title,
+                                data: data
+                            });
+                            markers.push(marker);
+                            markerClusterer.addMarker(marker);
+                            google.maps.event.addListener(marker, 'mouseover', function() {
+                                if (infoBubble != undefined && infoBubble.isOpen()) 
+                                    infoBubble.close();
+                                infowindow.setContent(this.description);
+                                infowindow.open(map, this);
+                            });
+
+                            // google.maps.event.addListener(marker, 'mouseover', function() { infowindow.open(mapen, this);});
+                            google.maps.event.addListener(marker, 'mouseout', function() {
+                                infowindow.close();
+                            });
+
+                        } else {
+                            console.log("some problem in geocode" + status);
+                        }
+                    };
+                })(i, p));
+            } else {
+                var data = locations[i];
+                data.lotVariantQty = accounting.formatNumber(data.lotVariantQty);
+                //var vQ = (data.lotVariantQty != undefined)?data.lotVariantQty:'';
+                var title = '<b>Product:</b> ' + data.productName +', <b>Lot:</b> ' + data.lotName + ', <b>Qty:</b> ' + parseInt(data.qty) + ', <b>Exp Date:</b>' + data.lotExpirationDate + ', <b>Var.Unit:</b>'+ data.lotVariantQty;
+                map.setCenter(latlng[locations[i].Address]);
+                marker = new google.maps.Marker({
+                    position: latlng[locations[i].Address],
+                    icon: 'https://chart.googleapis.com/chart?chst=d_bubble_text_small&chld=bb|' + ([parseInt(data.qty)]) + '|FF776B|000000',
+                    draggable: true,
+                    animation: 'BOUNCE',
+                    description: title,
+                    data: data
+                });
+                markers.push(marker);
+                markerClusterer.addMarker(marker);
+                google.maps.event.addListener(marker, 'mouseover', function() {
+                    infowindow.setContent(this.description);
+                    infowindow.open(map, this);
+                });
+
+                // google.maps.event.addListener(marker, 'mouseover', function() { infowindow.open(mapen, this);});
+                google.maps.event.addListener(marker, 'mouseout', function() {
+                    if (infoBubble != undefined && infoBubble.isOpen()) 
+                        infoBubble.close();
+                    infowindow.close();
+                });
+            }
+        }
+    }
+    // setMapCenter(ui.rowData);
+    function setMapCenter(data)
+    {
+        map.setCenter(latlng[data.Address]);
+    }
+    // Sets the map on all markers in the array.
+    function setAllMap(map) {
+      for (var i = 0; i < markers.length; i++) {
+        markers[i].setMap(map);
+      }
+    }
+
+    // Removes the markers from the map, but keeps them in the array.
+    function clearMarkers() {
+      //setAllMap(null);
+      if (markerClusterer) 
+        markerClusterer.clearMarkers();
+    }
+
+    // Shows any markers currently in the array.
+    function showMarkers() {
+      //setAllMap(map);
+    }
+
+    // Deletes all markers in the array by removing references to them.
+    function deleteMarkers() {
+      clearMarkers();
+      markers = [];
+    }   
+
+    function fn_setLocationMap(data)
+    {
+        deleteMarkers();
+        addMarker(data);
+        //showMarkers();
+    }
+
+
+</script>
+
+</apex:page>

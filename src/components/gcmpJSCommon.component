@@ -1,0 +1,362 @@
+<apex:component layout="none" access="global">
+
+<style>
+.spinner {
+    background: rgba(0,0,0,.2);
+    background-image: url('/img/loading32.gif');
+    background-repeat: no-repeat;
+    background-attachment: fixed;	    
+    background-position: center;
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    z-index: 9998;
+}
+tr.hoverBlue:hover td{background:#00EEFF !important;}
+tr.total td {font-weight: bold}
+td.total{font-weight: bold}
+.link{
+	cursor:pointer;
+	text-decoration:underline;
+	color: blue;
+}
+tr.pq-grid-row:not(.total) td.pq-grid-cell.drillThru:hover
+{
+	cursor:pointer;
+	text-decoration:underline;
+	color: blue;
+}
+table{
+	width:100%;
+	border-collapse:collapse;
+}
+div.pq-grid-footer{
+	display:none;
+}
+</style>
+
+<apex:includeScript value="{!$Resource.GMBLJS__jQuery}"/>
+<apex:stylesheet value="{!URLFOR($Resource.GMBLJS__jQueryUI,'/jquery-ui/jquery-ui.min.css')}"/>
+<apex:includeScript value="{!URLFOR($Resource.GMBLJS__jQueryUI,'/jquery-ui/jquery-ui.min.js')}"/>
+<apex:includeScript value="{!$Resource.GMBLJS__accountingJS}"/>
+<apex:includeScript value="{!$Resource.ExcellentExport14}"/>
+<apex:stylesheet value="{!URLFOR($Resource.GMBLJS__pqGridPro241,'/pqgrid.min.css')}"/>
+<apex:includeScript value="{!URLFOR($Resource.GMBLJS__pqGridPro241,'/pqgrid.min.js')}"/>
+<apex:includeScript value="{!$Resource.dateJS}"/>
+
+<script>function setFocusOnLoad() {}</script>
+<script>
+	accounting.settings = {
+		currency: {
+			symbol : "$",   // default currency symbol is '$'
+			format: "%s%v", // controls output: %s = symbol, %v = value/number (can be object: see below)
+			decimal : ".",  // decimal point separator
+			thousand: ",",  // thousands separator
+			precision : 2   // decimal places
+		},
+		number: {
+			precision : 0,  // default precision on numbers is 0
+			thousand: ",",
+			decimal : "."
+		}
+	}
+</script>
+<script>
+    $j = jQuery.noConflict();
+
+    var spinner = +0;
+
+	function fn_showSpinner()
+	{
+		spinner ++;
+		if(spinner > 0)
+		$j('#spinner').show();
+	}
+	function fn_hideSpinner()
+	{
+		spinner --;
+		if(spinner <= 0)
+		{
+			$j('#spinner').hide();
+			spinner = +0;
+		}
+	}
+	function HtmlDecode(s)
+	{
+		return $j('<div>').html(s).text();
+	}
+	function fn_refreshTotal($gridDiv,pageData)
+	{
+		var totalRow = {isTotal:true, pq_rowcls:'total'};
+		var totalColumns = [];
+		$j.each($gridDiv.pqGrid('getColModel'), function(i,col)
+		{
+			if(col.gTotal)
+			{
+				totalRow[col.dataIndx] = +0;
+				totalColumns.push(col.dataIndx);
+			}
+			else
+			{
+				totalRow[col.dataIndx] = null;
+			}
+		});
+
+		//aggregate the totals
+		$j.each(pageData, function(i,row)
+		{
+			$j.each(totalColumns, function(j,dataIndx)
+			{
+				if(!isNaN(row[dataIndx]))
+					totalRow[dataIndx] += parseFloat(row[dataIndx]);
+			});
+		});
+
+		if($gridDiv.find('.pq-grid-summary').length == 0)
+			$j("<div class='pq-grid-summary'></div>").prependTo($gridDiv.find('.pq-grid-bottom'));
+		$gridDiv.pqGrid("createTable", {data:[totalRow], $cont: $gridDiv.find('div.pq-grid-summary')});		
+	}
+
+	function fn_refreshGrid_callback($gridDiv, listObj)
+	{
+		/*
+		any rows that are filtered out will not be removed from the grid when clearing dataModel.data
+		so, to clear all data, we must first undo all filters.
+		in order to ensure that the filter values can be restored, we clone the col model
+		*/
+
+		//reset all of the filter values, to expose all of the data
+		$j.each($gridDiv.pqGrid('getColModel'), function(i,col)
+		{
+			if(col.gFilter)
+			{	 
+				 var selector = 'select[name=' + '\"' + col.dataIndx + '\"' + ']';
+
+				 var select = $gridDiv.find(selector).get(0);
+				 if(select && select.value != '')
+				 {
+				 	select.value = '';
+				 	select.dispatchEvent(new Event('change'));
+				 }
+
+				 col.filter.cache = null;
+				 col.filter.options=null;
+			}
+		});		
+
+		//refresh the data
+		var data = [];
+
+		$j.each(listObj, function(i,obj)
+		{
+			data.push(obj.mapProperty);
+		});
+		$gridDiv.pqGrid('option','dataModel.data', data);
+
+		//if there is new data, refresh the filter options, and refresh the data and view
+		if(listObj.length > 0)
+		{
+			$j.each($gridDiv.pqGrid('option','colModel'), function(i,col)
+			{
+				if(col.gFilter == true)
+				{
+					//data that will be filtered needs to be clean
+					$j.each($gridDiv.pqGrid('option','dataModel.data'), function(i,rowData)
+					{
+						rowData[col.dataIndx] = HtmlDecode(rowData[col.dataIndx]);
+					});
+
+					col.filter.value = '';
+					col.filter.cache = null;
+					col.filter.options = $gridDiv.pqGrid('getData',{dataIndx:[col.dataIndx]});
+				}
+			});
+			$gridDiv.pqGrid('refreshDataAndView');
+			$gridDiv.pqGrid('refreshView');
+		}
+		else //there's no data, so just refresh the view
+		{
+			$gridDiv.pqGrid('refreshView');
+		}
+		
+		fn_hideSpinner();
+		return;	
+	}
+
+
+	function fn_initFormat(colModel)
+	{
+		$j.each(colModel, function(i,col)
+		{
+			if(col.gFormat == 'number')
+			{
+				$j.extend(col,{
+					align:'center',
+					render: function(ui)
+					{
+						var cont = eval('ui.rowData.'+ui.dataIndx);
+						if (cont != null && !isNaN(cont))
+							return accounting.formatNumber(cont);
+					}
+				});
+			}
+			else if(col.gFormat == 'money')
+			{
+				$j.extend(col,{
+					align:'right',
+					halign:'right',
+					render: function(ui)
+					{
+						var cont = eval('ui.rowData.'+ui.dataIndx);
+						if (cont && cont != null && !isNaN(cont))
+							return accounting.formatMoney(cont);
+					}
+				});
+			}
+			else if(col.gFormat == 'checkbox')
+			{
+				$j.extend(col,{
+					align:'center',
+					halign:'center',
+					render: function(ui)
+					{
+						if(ui.rowData.pq_rowcls && ui.rowData.pq_rowcls.indexOf('total') >= 0) return;
+
+						var cont = eval('ui.rowData.'+ui.dataIndx);
+						var $wrap = $j('<wrap>').append($j('<input>').attr('type','checkbox').attr('disabled','disabled'));
+						if(cont == 'true')
+						{
+							$wrap.children().first().attr('checked','checked');
+							return $wrap.html();
+						}
+						else
+						{
+							return $wrap.html();
+						}
+					}
+				});				
+			}
+		});
+	}
+	function fn_initFilter(colModel)
+	{
+		$j.each(colModel, function(i,col)
+		{
+			if(col.gFilter)
+			{
+				$j.extend(col,{
+		        	filter:
+		        	{
+			        	type:'select',
+			            condition: 'equal',
+			            prepend: { '': '--All--' },
+			            valueIndx: col.dataIndx,
+			            labelIndx: col.dataIndx,
+			            listeners: ['change'],
+			            value:'',
+			            cache:null,
+			            options:null
+		        	}
+		    	});
+			}
+		});
+	}
+	function fn_appendExportLink($gridDiv)
+	{
+		var $exportLink = $j('<a download=\'export.xls\' href=\'#\'>Export to Excel</a>');
+			$exportLink.on('click',function()
+			{
+				fn_export($gridDiv,this);
+			});
+
+		$gridDiv.find('div.pq-grid-title').append('&nbsp;&nbsp;');
+		$gridDiv.find('div.pq-grid-title').append($exportLink);		
+	}
+
+	function fn_export($gridDiv,aTag)
+	{
+		fn_showSpinner();
+
+		var grid = $gridDiv.pqGrid('getInstance').grid;
+		var tableData = grid.option('dataModel').data; //console.log(tableData);
+		var colModel = grid.getColModel();
+		var title = $gridDiv.pqGrid('option','title');
+
+		var $rowTemplate = $j('<tr></tr>');
+		var $header = $j('<tr></tr>');
+
+		var dataIndexNumber = [];
+		var dataIndexMoney = [];
+
+		//build-up the header row
+		//build-up a template detail row
+		var titleColSpan = +0;
+		$j.each(colModel, function(i,col)
+		{
+			var $newTD = $j('<td></td>');
+			var $newTH = $j('<th style="border:1px solid black"></th>');
+			if(!col.hidden && col.dataIndx != 'scrollSpacer')
+			{
+				$header.append($newTH.clone().addClass(col.dataIndx).html(col.title));
+				$rowTemplate.append($newTD.clone().attr('id',col.dataIndx));
+
+				titleColSpan += 1;
+			}
+
+			if(col.gFormat == 'money')
+			   dataIndexMoney.push(col.dataIndx);
+			else if(col.gFormat == 'number')
+			   dataIndexNumber.push(col.dataIndx);
+
+		});
+
+		//create the table
+		$table = $j('<table></table>');
+		$table.attr('id','exportTable');
+
+		//add the header row
+		$table.append('<tr><td colspan=\"'+titleColSpan+'\" style="font-size:larger; font-weight:bold;">'+title+'</td></tr>');
+		$table.append($header);
+
+		//create and add the detail rows
+		$j.each(tableData, function(i, dataRow){
+			var $newRow = $rowTemplate.clone();
+			
+			if(dataRow.hasOwnProperty('pq_rowcls') && dataRow.pq_rowcls=='total')
+			{
+				$newRow.css('font-weight','bold');
+			}
+
+			$j.each($newRow.find('td'),function (j, cell){
+				idTd = $j(cell).attr('id');
+				if(dataRow.hasOwnProperty(idTd))
+				{
+					var cont = dataRow[idTd];
+
+					if($j.inArray(idTd,dataIndexMoney) >= 0 )
+						cont = accounting.formatMoney(cont);
+					else if($j.inArray(idTd,dataIndexNumber) >= 0)
+						cont = accounting.formatNumber(cont);
+
+					if(dataRow.hasOwnProperty('pq_rowcls') && dataRow.pq_rowcls=='total' && cont==0){
+						$j(cell).html('').addClass(idTd).removeAttr('id');
+					} else {
+						$j(cell).html(cont).addClass(idTd).removeAttr('id');
+					}
+				}
+			});
+
+			$table.append($newRow);
+		});
+
+		var $exportStage = $j('<div></div>');
+		$exportStage.append($table);
+		$j(document.body).append($exportStage);
+		ExcellentExport.excel(aTag, 'exportTable','');
+		$exportStage.remove();
+		fn_hideSpinner();
+	}
+	</script>
+</apex:component>

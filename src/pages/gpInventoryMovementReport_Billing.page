@@ -1,0 +1,529 @@
+<apex:page standardController="AcctSeed__Billing__c" extensions="gcInventoryMovementReport_Billing" showHeader="true" sidebar="true">
+
+<head>
+<style>
+.spinner {
+    background: rgba(0,0,0,.2);
+    background-image: url('/img/loading32.gif');
+    background-repeat: no-repeat;
+    background-attachment: fixed;       
+    background-position: center;
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    z-index: 9998;
+}
+.modal {
+    background: rgba(0,0,0,.2);
+    background-repeat: no-repeat;
+    background-attachment: fixed;       
+    background-position: center;
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    z-index: 100;
+}
+tr.hoverBlue:hover td{background:#00EEFF !important;}
+.link{
+    cursor:pointer;
+    text-decoration:underline;
+}
+tr.total td{
+    font-weight: bold;
+}
+table{
+    /*border-collapse:collapse;*/
+}
+#warehouse div.pq-grid-footer{
+    display:none;
+}
+#product div.pq-grid-footer{
+    display:none;
+}
+#detail div.pq-grid-footer{
+    display:none;
+}
+.pq-row-select{
+    background: #FFFF99 !important;
+}
+#maps{
+    width:100%;
+    height: 400px;
+    border: 1px solid #aaa;
+}
+</style>
+
+<apex:includeScript value="{!$Resource.GMBLJS__jQuery}"/>
+<apex:stylesheet value="{!URLFOR($Resource.GMBLJS__jQueryUI,'/jquery-ui/jquery-ui.min.css')}"/>
+<apex:includeScript value="{!URLFOR($Resource.GMBLJS__jQueryUI,'/jquery-ui/jquery-ui.min.js')}"/>
+<apex:includeScript value="{!$Resource.GMBLJS__accountingJS}"/>
+<apex:includeScript value="{!$Resource.GMBLJS__ExcellentExport}"/>
+<apex:stylesheet value="{!URLFOR($Resource.GMBLJS__pqGridPro,'/pqgrid.min.css')}"/>
+<apex:includeScript value="{!URLFOR($Resource.GMBLJS__pqGridPro,'/pqgrid.min.js')}"/>
+<apex:includeScript value="{!$Resource.dateJS}"/>
+
+
+<script>function setFocusOnLoad() {}</script>
+<script type="text/javascript">
+    $j = jQuery.noConflict();
+
+    var spinner = +0;
+
+    $j(document).ready(function()
+    {
+        fn_initGrid_detail();
+        fn_refreshGrid_detail();
+    });
+
+    accounting.settings = {
+        currency: {
+            symbol : "$",   // default currency symbol is '$'
+            format: "%s%v", // controls output: %s = symbol, %v = value/number (can be object: see below)
+            decimal : ".",  // decimal point separator
+            thousand: ",",  // thousands separator
+            precision : 0   // decimal places
+        },
+        number: {
+            precision : 0,  // default precision on numbers is 0
+            thousand: ",",
+            decimal : "."
+        }
+    }
+
+    function fn_showSpinner()
+    {
+        spinner ++;
+        if(spinner > 0)
+        $j('#spinner').show();
+    }
+    function fn_hideSpinner()
+    {
+        spinner --;
+        if(spinner <= 0)
+        {
+            $j('#spinner').hide();
+            spinner = 0;
+        }
+    }
+    function HtmlDecode(s)
+    {
+        return $j('<div>').html(s).text();
+    }
+    function fn_refreshTotal($gridDiv,pageData)
+    {
+        var totalRow = {isTotal:true, pq_rowcls:'total'};
+        var totalColumns = [];
+        $j.each($gridDiv.pqGrid('getColModel'), function(i,col)
+        {
+            if(col.gTotal)
+            {
+                totalRow[col.dataIndx] = +0;
+                totalColumns.push(col.dataIndx);
+            }
+            else
+            {
+                totalRow[col.dataIndx] = null;
+            }
+        });
+
+        //aggregate the totals
+        $j.each(pageData, function(i,row)
+        {
+            $j.each(totalColumns, function(j,dataIndx)
+            {
+                if(!isNaN(row[dataIndx]))
+                    totalRow[dataIndx] += parseFloat(row[dataIndx]);
+            });
+        });
+
+        if($gridDiv.find('.pq-grid-summary').length == 0)
+            $j("<div class='pq-grid-summary'></div>").prependTo($gridDiv.find('.pq-grid-bottom'));
+        $gridDiv.pqGrid("createTable", {data:[totalRow], $cont: $gridDiv.find('div.pq-grid-summary')});     
+    }
+
+    function fn_refreshGrid_callback($gridDiv, listObj)
+    {
+        /*
+        any rows that are filtered out will not be removed from the grid when clearing dataModel.data
+        so, to clear all data, we must first undo all filters.
+        in order to ensure that the filter values can be restored, we clone the col model
+        */
+
+        //reset all of the filter values, to expose all of the data
+        $j.each($gridDiv.pqGrid('getColModel'), function(i,col)
+        {
+            if(col.gFilter)
+            {    
+                 var selector = 'select[name=' + '\"' + col.dataIndx + '\"' + ']';
+
+                 var select = $gridDiv.find(selector).get(0);
+                 if(select && select.value != '')
+                 {
+                    select.value = '';
+                    select.dispatchEvent(new Event('change'));
+                 }
+
+                 col.filter.cache = null;
+                 col.filter.options=null;
+            }
+        });     
+
+        //refresh the data
+        var data = [];
+
+        $j.each(listObj, function(i,obj)
+        {
+            data.push(obj.mapProperty);
+        });
+        $gridDiv.pqGrid('option','dataModel.data', data);
+
+        //if there is new data, refresh the filter options, and refresh the data and view
+        if(listObj.length > 0)
+        {
+            $j.each($gridDiv.pqGrid('option','colModel'), function(i,col)
+            {
+                if(col.gFilter == true)
+                {
+                    //data that will be filtered needs to be clean
+                    $j.each($gridDiv.pqGrid('option','dataModel.data'), function(i,rowData)
+                    {
+                        rowData[col.dataIndx] = HtmlDecode(rowData[col.dataIndx]);
+                    });
+
+                    col.filter.value = '';
+                    col.filter.cache = null;
+                    col.filter.options = $gridDiv.pqGrid('getData',{dataIndx:[col.dataIndx]});
+                }
+            });
+            $gridDiv.pqGrid('refreshDataAndView');
+        }
+        else //there's no data, so just refresh the view
+        {
+            $gridDiv.pqGrid('refreshView');
+        }
+        
+        fn_hideSpinner();
+        return; 
+    }
+
+
+    function fn_initFormat(colModel)
+    {
+        $j.each(colModel, function(i,col)
+        {
+            if(col.gFormat == 'number')
+            {
+                $j.extend(col,{
+                    align:'center',
+                    render: function(ui)
+                    {
+                        var cont = eval('ui.rowData.'+ui.dataIndx);
+                        if (cont != null && !isNaN(cont))
+                            return accounting.formatNumber(cont);
+                    }
+                });
+            }
+            else if(col.gFormat == 'money')
+            {
+                $j.extend(col,{
+                    align:'right',
+                    halign:'right',
+                    render: function(ui)
+                    {
+                        var cont = eval('ui.rowData.'+ui.dataIndx);
+                        if (cont && cont != null && !isNaN(cont))
+                            return accounting.formatMoney(cont);
+                    }
+                });
+            }
+            else if(col.gFormat == 'checkbox')
+            {
+                $j.extend(col,{
+                    align:'center',
+                    halign:'center',
+                    render: function(ui)
+                    {
+                        if(ui.rowData.pq_rowcls && ui.rowData.pq_rowcls.indexOf('total') >= 0) return;
+
+                        var cont = eval('ui.rowData.'+ui.dataIndx);
+                        var $wrap = $j('<wrap>').append($j('<input>').attr('type','checkbox').attr('disabled','disabled'));
+                        if(cont == 'true')
+                        {
+                            $wrap.children().first().attr('checked','checked');
+                            return $wrap.html();
+                        }
+                        else
+                        {
+                            return $wrap.html();
+                        }
+                    }
+                });             
+            }
+        });
+    }
+    function fn_initFilter(colModel)
+    {
+        $j.each(colModel, function(i,col)
+        {
+            if(col.gFilter)
+            {
+                $j.extend(col,{
+                    filter:
+                    {
+                        type:'select',
+                        condition: 'equal',
+                        prepend: { '': '--All--' },
+                        valueIndx: col.dataIndx,
+                        labelIndx: col.dataIndx,
+                        listeners: ['change'],
+                        value:'',
+                        cache:null,
+                        options:null
+                    }
+                });
+            }
+        });
+    }
+
+    function fn_initGrid_detail()
+    {
+        var gridObj = {title:"Inventory Movements&nbsp;&nbsp;<span style='font-weight:normal; font-style:italic'></span>&nbsp;&nbsp;<a download='export.xls' href='#' onclick='return fn_export($j(\"#detail\"),this);$j(\"#exportStage\").empty();'>Export XLS</a>",
+                        collapsible:{on:false,collapsed:false},
+                        columnTemplate: {width:100, sortable:true},
+                        dataModel:{data:null, sorting:'local', location:'local', sortDir:'up'}, 
+                        dragColumns:{enabled:true},
+                        editable:false,
+                        filterModel:{on:true, mode:'AND', header:true},
+                        freezeCols:5,
+                        freezeRows:0,
+                        height:500,
+                        historyModel:{on:false},
+                        hoverMode:'row',
+                        hwrap:false,
+                        numberCell:{show:false},
+                        pageModel: {type:null},
+                        pasteModel:{on:false},
+                        resizable: true,
+                        roundCorners: false,
+                        //scrollModel: {autoFit:true},
+                        selectionModel: {type: null},
+                        showBottom:true,
+                        showHeader:true,
+                        showTitle:true,
+                        showTop:true,
+                        showToolbar:true,
+                        sortable:true,
+                        swipeModel:{on:false},
+                        virtualX: false,
+                        //virtualXHeader: false,
+                        virtualY: false,
+                        width:'auto',
+                        wrap:false};
+
+        gridObj.colModel=[{dataIndx:"vendorName",           title:"Vendor",                     align:"left",   dataType:"string", width:100, gFilter:true},
+                          {dataIndx:"moveType",             title:"Type",                       align:"center", dataType:"string", gFilter:true},
+                          {dataIndx:"origName",             title:"Orig. Entity",               align:"left",   dataType:"string", width:100},
+                          {dataIndx:"origShippingStreet",   title:"Orig. Street",               align:"left",   dataType:"string", width:100},
+                          {dataIndx:"origShippingCity",     title:"Orig. City",                 align:"left",   dataType:"string", width:100},
+                          {dataIndx:"origShippingState",    title:"Orig. State",                align:"left",   dataType:"string", width:50},
+                          {dataIndx:"origShippingPostalCode",   title:"Orig. Zip",              align:"left",   dataType:"string", width:75},
+                          {dataIndx:"destName",             title:"Dest. Entity",               align:"left",   dataType:"string", width:100},
+                          {dataIndx:"destShippingStreet",   title:"Dest. Street",               align:"left",   dataType:"string", width:100},
+                          {dataIndx:"destShippingStreet2",   title:"Dest. Street2",               align:"left",   dataType:"string", width:100},
+                          {dataIndx:"destShippingCity",     title:"Dest. City",                 align:"left",   dataType:"string", width:100},
+                          {dataIndx:"destShippingState",    title:"Dest. State",                align:"left",   dataType:"string", width:50},
+                          {dataIndx:"destShippingPostalCode",   title:"Dest. Zip",              align:"left",   dataType:"string", width:75},
+                          {dataIndx:"destDEA",              title:"Dest. DEA",                  align:"left",   dataType:"string", width:100},
+                          {dataIndx:"340B",                 title:"340B",                       align:"left",   dataType:"string", width:75},
+                          {dataIndx:"parentName",           title:"Invoice",                    align:"left", dataType:"string", width:75},
+                          {dataIndx:"dateMove",             title:"Trans. Date",            align:"center", dataType:"date", width:75},
+                          {dataIndx:"productCode",          title:"NDC",                align:"left",   dataType:"string", gFilter:true, width:100},
+                          {dataIndx:"qty",                  title:"Cartons",            align:"right",  dataType:"float", gFormat:'number', gTotal:true},
+                          {dataIndx:"productName",          title:"Product",            align:"left",   dataType:"string", width:100},
+                          {dataIndx:"lotName",              title:"Lot #",              align:"left",   dataType:"string", gFilter:true},
+                          {dataIndx:"lotExpirationDate",    title:"Expiration",         align:"center", dataType:"date"},
+                          {dataIndx:"lotVariantQty",        title:"Var.Units",          align:"center", dataType:"float", gFormat:'number'},
+                          {dataIndx:"destLicense",          title:"Dest. License",              align:"left",   dataType:"string", width:100},
+                          {dataIndx:"salesOrderLineAmount", title:"Customer Order", align:"right", dataType:"float", gFormat:"money", width:100, gTotal: true},
+                          {dataIndx:"chargebackBilledAmount",title:"Chargeback Billed",     align:"right", dataType:"float", gFormat:"money", width:120, gTotal: true},
+                          {dataIndx:"scrollSpacer", minWidth:15, maxWidth:15}];
+
+        fn_initFormat(gridObj.colModel);
+        fn_initFilter(gridObj.colModel);
+
+        gridObj.toolbar={
+
+           items: [
+                { type: '<span>Freeze Columns: </span>' },
+                { type: 'select', options:[1,2,3,4,5],
+                    listeners: [
+                        {
+                            change: function (evt) {
+                                $j('#detail').pqGrid("option", "freezeCols", $j(this).val());
+                                $j('#detail').pqGrid("refreshView");
+                            }
+                        }
+                    ]
+                }
+                ]
+        };
+
+        $j.each(gridObj.colModel, function(i,col)
+        {
+            if(col.dataIndx == 'lotName')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.lotName && ui.rowData.lotName != null && ui.rowData.lotName.length > 0)
+                        var $myObj = $j('<a>').html(ui.rowData.lotName).attr('href','/'+ui.rowData.idLot).attr('target','_blank');
+                        return $j('<wrap>').append($myObj).html();
+                    }
+                });
+            }
+
+            else if(col.dataIndx == 'productName')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        var $myObj = $j('<a>').html(ui.rowData.productName).attr('href','/'+ui.rowData.idProduct).attr('target','_blank');
+                        return $j('<wrap>').append($myObj).html();
+                    },
+                    filter: { type: 'textbox', condition: 'contain', listeners: ['keyup'] }
+                });
+            }
+
+            else if(col.dataIndx == 'parentName')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        var $myObj = $j('<a>').html(ui.rowData.parentName).attr('href','/'+ui.rowData.idParent).attr('target','_blank');
+                        return $j('<wrap>').append($myObj).html();
+                    }
+                });
+            }
+
+            else if(col.dataIndx == 'origName' || col.dataIndx == 'destName')
+            {
+                $j.extend(col,{
+                    filter: { type: 'textbox', condition: 'contain', listeners: ['keyup'] }
+                });
+            }
+
+        });
+
+        var $gridDiv = $j('#detail');
+
+        $gridDiv.pqGrid(gridObj);
+
+        $gridDiv.find('div.pq-toolbar select').val(gridObj.freezeCols);
+
+        $gridDiv.on('pqgridrefresh', function(event, ui)
+        {
+            fn_refreshTotal($j(this),ui.pageData);
+        });
+    }
+
+    function fn_refreshGrid_detail()
+    {
+        fn_showSpinner();
+        var $gridDiv = $j('#detail'); 
+
+        var groupBy = ['idLot','dateMove','idParent','idSOL'];
+
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.gcInventoryMovementReport_Billing.inventoryMovementSummaryByBilling}',
+            '{!Id}',groupBy,
+            function(result,event){if(event.status) fn_refreshGrid_callback($gridDiv,result);else {alert(event.message); fn_hideSpinner();}},
+            {buffer:true, escape:true, timeout:120000});    
+    }
+
+
+    function fn_export($gridDiv,aTag)
+    {
+        fn_createExportTable($gridDiv);
+        return ExcellentExport.excel(aTag, 'exportTable', 'exportWorkSheet');
+    }
+
+    function fn_createExportTable($gridDiv)
+    {
+        fn_showSpinner();
+
+        var grid = $gridDiv.pqGrid('getInstance').grid;
+        var tableData = grid.option('dataModel').data;
+        var colModel = grid.getColModel();
+
+        var $rowTemplate = $j('<tr></tr>');
+        var $header = $j('<tr></tr>');
+
+        //build-up the header row
+        //build-up a template detail row
+        $j.each(colModel, function(i,col)
+        {
+            var $newTD = $j('<td></td>');
+            var $newTH = $j('<th style="border:1px solid black"></th>');
+            if(!col.hidden && col.dataIndx != 'scrollSpacer')
+            {
+                $header.append($newTH.clone().addClass(col.dataIndx).html(col.title));
+                $rowTemplate.append($newTD.clone().attr('id',col.dataIndx));
+            }
+        });
+
+        //tableData.push(totalRows[0]);
+
+        //create the table
+        $j('#exportStage').html('');
+        $table = $j('<table></table>');
+        $table.attr('id','exportTable');
+
+        //add the header row
+        //$table.append('<tr><td style="font-size:larger; font-weight:bold;"></td>This is the title.</tr>');
+        $table.append($header);
+
+        //create and add the detail rows
+        $j.each(tableData, function(i, dataRow){
+            var $newRow = $rowTemplate.clone();
+            if(dataRow.pq_rowcls && dataRow.pq_rowcls.contains('total'))
+            {
+                $newRow.css('font-weight','bold');
+            }
+
+            $j.each($newRow.find('td'),function (j, cell){
+                idTd = $j(cell).attr('id');
+                if(dataRow.hasOwnProperty(idTd))
+                {
+                    var cont = dataRow[idTd];
+                    if(!isNaN(cont))
+                    {
+                        cont = accounting.formatNumber(cont);
+                    } 
+                    $j(cell).html(cont).addClass(idTd).removeAttr('id');
+                }
+            });
+
+            $table.append($newRow);
+        });
+
+        $j('#exportStage').append($table);
+
+        fn_hideSpinner();
+    }
+
+
+</script>
+</head>
+<div id="spinner" class="spinner" style="display:none;"></div>
+
+<div style="width:90%; margin:0 auto">
+    <div id="detail" style="z-index:1"></div>
+</div>
+
+<div id="exportStage" style="display:none;"></div>
+
+</apex:page>

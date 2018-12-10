@@ -1,0 +1,5 @@
+<apex:page renderAs="pdf" applyHtmlTag="false" applyBodyTag="false" showHeader="false" readOnly="true">
+
+	<c:gcmpDocument />
+
+</apex:page>

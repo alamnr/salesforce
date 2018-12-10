@@ -1,0 +1,603 @@
+<apex:page controller="gcUSCCommissionImport" showHeader="true" sidebar="false" cache="false" docType="html-5.0">
+
+<head>
+<style>
+tr.hoverBlue:hover td{background:#00EEFF !important;}
+
+tr.total td{font-weight: bold;}
+
+tr.lowerline{height: 3px;}
+
+tr.lowerline td{ 
+    background: white;
+    padding-top: 1px !important;
+    padding-bottom: 1px !important;
+    font-weight: bold !important;
+    border-left: none !important;
+    border-right: none !important;
+    border-top: none !important;
+    border-bottom: none !important;
+}   
+
+.highlight{
+    background-color:yellow;
+}
+
+.chkProcess{
+    text-align: center;
+    font-size: 16px;
+}
+
+tr.topline td{
+    background: white; 
+    border-top: 2px solid black !important;
+    border-left: none !important;
+    border-right: none !important;
+    border-bottom: none !important;
+    padding-top: 10px !important;
+    padding-bottom: 1px !important;
+    font-weight: bold !important;
+}
+.link{
+    cursor:pointer;
+    text-decoration:underline;
+}
+.cursorIsPointer{
+    cursor:pointer;
+}
+.blue{
+    color:blue;
+}
+div.pq-grid-footer{
+    display:none;
+}
+div.pq-max{
+    display:none;
+}
+</style>
+
+<apex:stylesheet value="{!URLFOR($Resource.GMBLJS__jQueryUI,'/jquery-ui/jquery-ui.min.css')}"/>
+<apex:stylesheet value="{!URLFOR($Resource.GMBLJS__pqGridPro241,'/pqgrid.min.css')}"/>
+
+<apex:includeScript value="{!$Resource.GMBLJS__jQuery}"/>
+<apex:includeScript value="{!URLFOR($Resource.GMBLJS__jQueryUI,'/jquery-ui/jquery-ui.min.js')}"/>
+<apex:includeScript value="{!URLFOR($Resource.GMBLJS__pqGridPro241,'/pqgrid.min.js')}"/>
+
+<apex:includeScript value="{!$Resource.GMBLJS__accountingJS}"/>
+<apex:includeScript value="{!$Resource.GMBLJS__ExcellentExport}"/>
+
+<apex:includeScript value="{!$Resource.GMBLJS__gsrSpinner}"/>
+<apex:includeScript value="{!$Resource.GMBLJS__gsrGrid}"/>
+<apex:includeScript value="{!URLFOR($Resource.gsrCSVImport,'/jquery.csv-0.71.min.js')}"/>
+
+<script>function setFocusOnLoad() {}</script>
+<script type="text/javascript">
+
+    $j = jQuery.noConflict();
+
+    var jData;
+    var anyErrors;
+    var totalCommissions;
+    
+    $j(document).ready(function()
+    {
+
+        gSpinner.show();
+        gSpinner.hide();
+
+    });
+
+
+    function fn_ImportCommissionFile()
+    {
+        try {
+    
+            gSpinner.show();
+            jData = null;
+            var regex = /^([a-zA-Z0-9\s_\\.\-:])+(.csv|.txt)$/;
+            if (regex.test($j("#fileSelect").val().toLowerCase())) {
+                if (typeof (FileReader) != "undefined") {
+                    var reader = new FileReader();
+                    reader.onload = function (e) {
+                        jData = $j.csv.toObjects(e.target.result);
+
+                        //alert(JSON.stringify(jData));
+                        jData.forEach(function(e) {
+                            e.SOP_Type=e['SOP Type'].trim();
+                            e.Document_Date=e['Document Date'].trim();
+                            e.SOP_Number = e['SOP Number'].trim();
+                            e.Customer_Number = e['Customer Number'].trim();
+                            e.Customer_Name = e['Customer Name'].trim();
+                            e.Item_Number=e['Item Number'].trim();
+                            e.Item_Description= e['Item Description'].trim();
+                            e.Quantity=parseInt(e['Comm Quantity'].trim());
+                            e.Item_Plan=e['Item Plan'].trim();
+                            e.Import_Cost=stringtoFloat(e['Comm Cost Amt'].trim());
+                            e.Import_Price=stringtoFloat(e['Comm Sale Amt'].trim());
+                            e.Import_Percent=0;
+                            e.Import_Commission=stringtoFloat(e['Net Comm Amt'].trim());
+                            e.IdAccount=null;
+                            e.IdProduct=null;
+                            e.Contract_Cost=0;
+                            e.Contract_Price=0;
+                            e.Contract_Percent=0;
+                            e.Contract_Commission=0;
+                            e.IdSalesOrderLine=null;
+                            e.IdSalesOrder=null;
+                            e.IdBilling=null;
+                            e.IdBillingLine=null;
+                            e.Error_Message = '';
+
+                            delete e['Comm Process Run ID'];
+                            delete e['Comm Status']; 
+                            delete e['Salesperson ID'];  
+                            delete e['SOP Type'];
+                            delete e['Document Date'];
+                            delete e['SOP Number'];
+                            delete e['Customer Number'];
+                            delete e['Customer Name'];
+                            delete e['City'];
+                            delete e['State']; 
+                            delete e['Zip'];
+                            delete e['Item Number']; 
+                            delete e['Item Description'];
+                            delete e['Item Plan'];
+                            delete e['Comm Quantity'];  
+                            delete e['Comm Sale Amt'];   
+                            delete e['Comm Cost Amt'];   
+                            delete e['Net Comm Amt'];    
+                            delete e['User Defined 1'];
+                            delete e['Commission Inquiries'];
+                            delete e['USC Follow-UP'];
+                        });
+
+
+                        //alert(JSON.stringify(jData));
+
+                        fn_ValidateData();
+                    }
+                    reader.readAsText($j("#fileSelect")[0].files[0]);
+                    
+                } 
+                else {
+                    alert("This browser does not support HTML5.");
+                }
+            } 
+            else {
+                alert("Please upload a valid USC commission CSV file.");
+            }
+        }
+        catch(err) {
+            alert(err.message);
+        }
+    }
+
+    function stringtoFloat(v)
+    {
+        var tmpval = v;
+
+        if (tmpval.substring(0,1) == '$')
+            tmpval = tmpval.substring(1,tmpval.length)
+
+        tmpval = tmpval.replace(/,/g,"");
+        return parseFloat(tmpval);
+    }
+
+    accounting.settings = {
+        currency: {
+            symbol : "$",   // default currency symbol is '$'
+            format: "%s%v", // controls output: %s = symbol, %v = value/number (can be object: see below)
+            decimal : ".",  // decimal point separator
+            thousand: ",",  // thousands separator
+            precision : 2   // decimal places
+        },
+        number: {
+            precision : 0,  // default precision on numbers is 0
+            thousand: ",",
+            decimal : "."
+        }
+    }
+
+    function fn_FinishValidate($gridDiv, result)
+    {
+
+     
+        anyErrors = false;
+        totalValidLines = 0;
+        totalInvalidLines = 0;
+     
+        jData = result;
+     
+        msg = '';
+
+        for(i = 0; i < jData.length; i++) {
+
+            if (!jData[i].Error_Message)
+                totalValidLines++;
+            else
+                totalInvalidLines++;
+        }
+
+        msg = 'Valid lines in file: ' + totalValidLines + '<br/>';
+        msg += 'Invalid lines in file: ' + totalInvalidLines;
+
+        $j("#results").html(msg);
+
+        if (anyErrors)
+            $j('#save').prop('disabled', true);
+        else
+            $j('#save').prop('disabled', false);
+        
+        fn_initGrid();
+        //$gridDiv.pqGrid( "option", "dataModel.data", jData );
+        $gridDiv.pqGrid('refreshDataAndView');
+        $gridDiv.pqGrid('refreshView');
+        gSpinner.hide();
+
+    }
+   
+    function fn_ValidateData()
+    {
+       // alert(JSON.stringify(jData));
+        var $gridDiv = $j('#grdImportCommission');
+
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.gcUSCCommissionImport.ValidateData}',
+            jData,
+            function(result,event){if(event.status) {fn_FinishValidate($gridDiv,result);} else {alert(event.message); gSpinner.hide();}},
+            {buffer:true, escape:true, timeout:120000});
+    }
+
+
+    function fn_ImportResults(result)
+    {
+
+        var msg = 'Commission disbursements saved: ' + result;
+
+        $j("#results").html(msg);
+
+        gSpinner.hide();
+        
+    }
+
+    function fn_Save()
+    {
+
+        gSpinner.show();
+        
+        Visualforce.remoting.Manager.invokeAction(
+        '{!$RemoteAction.gcUSCCommissionImport.SaveData}',
+        jData,
+        function(result,event){if(event.status) fn_ImportResults(result);else {alert(event.message); gSpinner.hide();}},
+        {buffer:true, escape:true, timeout:120000});
+
+    }
+
+
+    function fnInitFormat(colModel)
+    {
+        $j.each(colModel, function(i,col)
+        {
+            if(col.gFormat == 'number')
+            {
+                $j.extend(col,{
+                    align:'center',
+                    render: function(ui)
+                    {
+                        var cont = eval('ui.rowData.'+ui.dataIndx);
+                        if (cont != null && !isNaN(cont) && cont != "")
+                            return accounting.formatNumber(cont);
+                    }
+                });
+            }
+            else if(col.gFormat == 'money')
+            {
+                $j.extend(col,{
+                    align:'right',
+                    halign:'right',
+                    render: function(ui)
+                    {
+                        var cont = eval('ui.rowData.'+ui.dataIndx);
+                        if (cont && cont != null && !isNaN(cont))
+                            return accounting.formatMoney(cont);
+                    }
+                });
+            }
+            else if(col.gFormat == 'percent')
+            {
+                $j.extend(col,{
+                    align:'right',
+                    halign:'right',
+                    render: function(ui)
+                    {
+                        var cont = eval('ui.rowData.'+ui.dataIndx);
+                        if (cont && cont != null && !isNaN(cont))
+                            return accounting.formatNumber(cont) + '%';
+                    }
+                });
+            }
+        });
+    }
+
+    function capitalizeFirstLetter(string) {
+
+        if (!string)
+            return null
+        else
+            return string.charAt(0).toUpperCase() + string.slice(1);
+    }
+
+    function formatcurrency(val) {
+
+        var cont = eval(val);
+        if (cont && cont != null && !isNaN(cont))
+            return accounting.formatMoney(cont);
+        else
+            return '';
+
+    }
+
+    function formatpercent(val) {
+
+        var cont = eval(val);
+        if (cont && cont != null && !isNaN(cont))
+            return accounting.toFixed(cont, 0) + '%';
+        else
+            return '';
+
+    }
+
+    function fn_initGrid()
+    {
+        
+        var gridObj = {title:"USC Commission Data",
+                        collapsible:{on:false,collapsed:false,editable:false,toggle:false},
+                        columnTemplate: {sortable:true},
+                        dataModel:{data:jData},
+                        dragColumns:{enabled:false},
+                        editable:false,
+                        filterModel:{on:false, mode:'AND', header:false},
+                        freezeCols:0,
+                        freezeRows:0,
+                        height:300,
+                        historyModel:{on:false},
+                        hoverMode:'row',
+                        hwrap:false,
+                        numberCell:{show:false},
+                        pageModel: {type:null},
+                        pasteModel:{on:false},
+                        resizable: true,
+                        roundCorners: false,
+                        scrollModel: {autoFit:true},
+                        selectionModel: { type: null},
+                        showBottom:true,
+                        showHeader:true,
+                        showTitle:true,
+                        showTop:true,
+                        showToolbar:true,
+                        sortable:true,
+                        swipeModel:{on:false},
+                        virtualX: false,
+                        virtualY: false,
+                        width:'auto',
+                        wrap:false}; 
+
+        gridObj.colModel=
+            [{dataIndx:'SOP_Number',            title:'SOP Number',                         dataType: "string", minWidth:100, maxWidth:125},
+            {dataIndx:'Document_Date',          title:'Document Date' ,                      dataType: "string", minWidth:100, maxWidth:125},
+            {dataIndx:'Customer_Name',          title:'Customer Name' ,                     dataType: "string", hidden:true},
+            {dataIndx:'Customer_Number',        title:'Customer Number',                    dataType: "string", minWidth:100, maxWidth:125},
+            {dataIndx:'Item_Number',            title:'Product Code',                       dataType: "string", minWidth:100, maxWidth:125},
+            {dataIndx:'Item_Description',       title:'Product Description',                dataType: "string", hidden:true},
+            {dataIndx:'Quantity',               title:'QTY',                                dataType:'float', gFormat:'number', minWidth:50, maxWidth:50},
+            
+            {dataIndx:'Import_Cost',            title:'Import&nbsp;<br/>Cost',                 align:'right', dataType:'float', gFormat:'money', minWidth:90, maxWidth:90},
+            {dataIndx:'Import_Price',           title:'Import&nbsp;<br/>Price',                align:'right', dataType:'float', gFormat:'money', minWidth:90, maxWidth:90},
+            {dataIndx:'Import_Commission',      title:'Import&nbsp;<br/>Commission',           align:'right', dataType:'float', gFormat:'money', minWidth:90, maxWidth:90},
+            {dataIndx:'Import_Percent',         title:'Import&nbsp;<br/>Share %',              align:'right', dataType:'float', gFormat:'percent', minWidth:90, maxWidth:90},
+            {dataIndx:'Contract_Cost',          title:'Contract&nbsp;<br/>Cost',               align:'right', dataType:'float', gFormat:'money', minWidth:90, maxWidth:90},
+            {dataIndx:'Contract_Price',         title:'Contract&nbsp;<br/>Price',              align:'right', dataType:'float', gFormat:'money', minWidth:90, maxWidth:90},
+            {dataIndx:'Contract_Commission',    title:'Contract&nbsp;<br/>Commission',         align:'right', dataType:'float', gFormat:'money', minWidth:90, maxWidth:90},
+            {dataIndx:'Contract_Percent',       title:'Contract&nbsp;<br/>Share %',            align:'right', dataType:'float', gFormat:'percent', minWidth:90, maxWidth:90},
+
+            {dataIndx:'IdAccount',              title:'IdAccount',              hidden:true},
+            {dataIndx:'IdProduct',              title:'IdProduct',              hidden:true},
+            {dataIndx:'Error_Message',          title:'Error Message',        dataType: "string", minWidth:350}];
+
+        //fnInitFormat(gridObj.colModel);
+        gGrid.initFormat(gridObj.colModel);
+        gGrid.initFilter(gridObj.colModel);
+
+ 
+        $j.each(gridObj.colModel, function(i,col)
+        {
+
+
+
+            if(col.dataIndx == 'Item_Number')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.IdProduct == null)
+                            $j(this).pqGrid('addClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'highlight'});
+                        return ui.rowData.Item_Number;
+                    }
+                });
+            }
+
+            else if(col.dataIndx == 'SOP_Number')
+            {   
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.IdSalesOrder == null)
+                            $j(this).pqGrid('addClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'highlight'});
+
+                        return ui.rowData.SOP_Number
+                    }
+                });
+            }
+
+            else if(col.dataIndx == 'Customer_Number')
+            {   
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.IdAccount == null)
+                            $j(this).pqGrid('addClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'highlight'});
+
+                        return ui.rowData.Customer_Number
+                    }
+                });
+            }
+
+            else if(col.dataIndx == 'Import_Cost')
+            {   
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.Import_Cost != ui.rowData.Contract_Cost && ui.rowData.IdProduct != null && ui.rowData.IdSalesOrder != null)
+                            $j(this).pqGrid('addClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'highlight'});
+
+                        return formatcurrency(ui.rowData.Import_Cost);
+
+                    }
+                });
+            }
+            else if(col.dataIndx == 'Import_Price')
+            {   
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.Import_Price != ui.rowData.Contract_Price && ui.rowData.IdProduct != null && ui.rowData.IdSalesOrder != null)
+                            $j(this).pqGrid('addClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'highlight'});
+
+                        return formatcurrency(ui.rowData.Import_Price);
+                    }
+                });
+            }
+            else if(col.dataIndx == 'Import_Commission')
+            {   
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.Import_Commission != ui.rowData.Contract_Commission && ui.rowData.IdProduct != null && ui.rowData.IdSalesOrder != null)
+                            $j(this).pqGrid('addClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'highlight'});
+                        
+                        return formatcurrency(ui.rowData.Import_Commission);
+                    }
+                });
+            }
+            else if(col.dataIndx == 'Import_Percent')
+            {   
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.Import_Percent != ui.rowData.Contract_Percent && ui.rowData.IdProduct != null && ui.rowData.IdSalesOrder != null)
+                            $j(this).pqGrid('addClass',{rowIndx:ui.rowIndx, dataIndx:ui.dataIndx, cls:'highlight'});
+                            
+                        return formatpercent(ui.rowData.Contract_Percent);
+                        
+                    }
+                });
+            } 
+            else if(col.dataIndx == 'Contract_Cost')
+            {   
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.IdSalesOrder != null)
+                            return formatcurrency(ui.rowData.Contract_Cost);
+                        else
+                            return 'N/A';
+                    }
+                });
+            }
+            else if(col.dataIndx == 'Contract_Price')
+            {   
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.IdSalesOrder != null)
+                            return formatcurrency(ui.rowData.Contract_Price);
+                        else
+                            return 'N/A';
+                    }
+                });
+            } 
+            else if(col.dataIndx == 'Contract_Commission')
+            {   
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.IdSalesOrder != null)
+                            return formatcurrency(ui.rowData.Contract_Commission);
+                        else
+                            return 'N/A';
+                    }
+                });
+            }
+            else if(col.dataIndx == 'Contract_Percent')
+            {   
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.IdSalesOrder != null)
+                            return formatpercent(ui.rowData.Contract_Percent);
+                        else
+                            return 'N/A';
+                    }
+                });
+            }
+            else if(col.dataIndx == 'Error_Message')
+            {   
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        return capitalizeFirstLetter(ui.rowData.Error_Message);
+                    }
+                });
+            }
+
+        }); 
+
+        var $gridDiv = $j('#grdImportCommission');
+        $gridDiv.pqGrid(gridObj);
+        $gridDiv.pqGrid('refreshDataAndView');
+        $gridDiv.pqGrid('refreshView');
+
+    }
+
+</script>
+</head>
+<body>
+    <div style="margin:0 auto; width:90%">
+       <apex:form >
+            <div style="text-align:center;">
+                <br/>
+                <span style="font-size:large">USC Commission Data Import</span>
+                <br/><br/>
+            </div>
+            <br/>
+            <apex:pagemessages />
+            
+            <apex:pageBlock >
+            
+                <div id="divImportCommission">
+                    <p>Please select a USC Commission data file for import:</p><br/>
+                    <input type="file" id="fileSelect" onchange="fn_ImportCommissionFile();" />
+                    <input type="button" id="save" value="Save" disabled="true" onclick="fn_Save();"/>
+                    <br/><br/><div><div id="grdImportCommission"></div></div>
+                    <br/>
+                    <span id="results" class="blue"></span>
+                </div>
+                 
+            </apex:pageBlock>       
+
+        </apex:form>
+    </div>
+    
+</body>
+
+</apex:page>

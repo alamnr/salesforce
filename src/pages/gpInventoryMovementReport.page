@@ -1,0 +1,224 @@
+<apex:page controller="gcInventoryMovementReport" showHeader="true" sidebar="true">
+
+<head>
+
+<c:gcmpJSCommon />
+
+<script type="text/javascript">
+
+    $j(document).ready(function()
+    {
+        fn_initDatePicker();
+        fn_initGrid_detail();
+        fn_refreshGrid_detail();
+    });
+
+    function fn_initDatePicker()
+    {
+        $j('#datepickerFrom').datepicker({'showButtonPanel':true});
+        $j('#datepickerThru').datepicker({'showButtonPanel':true});
+        $j('#datepickerFrom').datepicker('setDate', Date.today().moveToFirstDayOfMonth().addMonths(-1));
+        $j('#datepickerThru').datepicker('setDate', Date.today().moveToFirstDayOfMonth().addDays(-1));
+    }
+
+    function fn_initGrid_detail()
+    {
+        var gridObj = {title:"Inventory Movements",
+                        collapsible:{on:false,collapsed:false},
+                        columnTemplate: {width:100, sortable:true},
+                        dataModel:{data:null, sorting:'local', location:'local', sortDir:'up'}, 
+                        dragColumns:{enabled:true},
+                        editable:false,
+                        filterModel:{on:true, mode:'AND', header:true},
+                        freezeCols:5,
+                        freezeRows:0,
+                        height:500,
+                        historyModel:{on:false},
+                        hoverMode:'row',
+                        hwrap:false,
+                        numberCell:{show:false},
+                        pageModel: {type:null},
+                        pasteModel:{on:false},
+                        resizable: true,
+                        roundCorners: false,
+                        //scrollModel: {autoFit:true},
+                        selectionModel: {type: null},
+                        showBottom:true,
+                        showHeader:true,
+                        showTitle:true,
+                        showTop:true,
+                        showToolbar:true,
+                        sortable:true,
+                        swipeModel:{on:false},
+                        virtualX: false,
+                        //virtualXHeader: false,
+                        virtualY: false,
+                        width:'auto',
+                        wrap:false};
+
+        gridObj.colModel=[{dataIndx:"vendorName",           title:"Vendor",                     align:"left",   dataType:"string", width:100, gFilter:true},
+                          {dataIndx:"moveType",             title:"Type",                       align:"center", dataType:"string", gFilter:true},
+                          {dataIndx:"origName",             title:"Orig. Entity",               align:"left",   dataType:"string", width:100},
+                          {dataIndx:"origShippingStreet",   title:"Orig. Street",               align:"left",   dataType:"string", width:100},
+                          {dataIndx:"origShippingCity",     title:"Orig. City",                 align:"left",   dataType:"string", width:100},
+                          {dataIndx:"origShippingState",    title:"Orig. State",                align:"left",   dataType:"string", width:50},
+                          {dataIndx:"origShippingPostalCode",   title:"Orig. Zip",              align:"left",   dataType:"string", width:75},
+                          {dataIndx:"destName",             title:"Dest. Entity",               align:"left",   dataType:"string", width:100},
+                          {dataIndx:"destShippingStreet",   title:"Dest. Street",               align:"left",   dataType:"string", width:100},
+                          {dataIndx:"destShippingCity",     title:"Dest. City",                 align:"left",   dataType:"string", width:100},
+                          {dataIndx:"destShippingState",    title:"Dest. State",                align:"left",   dataType:"string", width:50},
+                          {dataIndx:"destShippingPostalCode",   title:"Dest. Zip",              align:"left",   dataType:"string", width:75},
+                          {dataIndx:"destDEA",              title:"Dest. DEA",                  align:"left",   dataType:"string", width:100},
+                          {dataIndx:"parentName",           title:"Document",                    align:"left", dataType:"string", width:75},
+                          {dataIndx:"dateMove",             title:"Trans. Date",            align:"center", dataType:"date", width:75},
+                          {dataIndx:"productCode",          title:"NDC",                align:"left",   dataType:"string", gFilter:true, width:100},
+                          {dataIndx:"qty",                  title:"Cartons",            align:"right",  dataType:"float", gFormat:'number', gTotal:true},
+                          {dataIndx:"destLicense",          title:"Dest. License",              align:"left",   dataType:"string", width:100},
+                          {dataIndx:"productName",          title:"Product",            align:"left",   dataType:"string", width:100},
+                          {dataIndx:"lotName",              title:"Lot #",              align:"left",   dataType:"string", gFilter:true},
+                          {dataIndx:"lotExpirationDate",    title:"Expiration",         align:"center", dataType:"date"},
+                          {dataIndx:"lotVariantQty",        title:"Var.Units",          align:"center", dataType:"float", gFormat:'number'},
+                          {dataIndx:"qty",                  title:"Cartons",            align:"right",  dataType:"float", gFormat:'number', gTotal:true},
+                          {dataIndx:"scrollSpacer", minWidth:15, maxWidth:15}];
+
+        fn_initFormat(gridObj.colModel);
+        fn_initFilter(gridObj.colModel);
+
+        gridObj.toolbar={
+
+           items: [
+                { type: '<span>Freeze Columns: </span>' },
+                { type: 'select', options:[1,2,3,4,5],
+                    listeners: [
+                        {
+                            change: function (evt) {
+                                $j('#detail').pqGrid("option", "freezeCols", $j(this).val());
+                                $j('#detail').pqGrid("refreshView");
+                            }
+                        }
+                    ]
+                }
+                ]
+        };
+
+        $j.each(gridObj.colModel, function(i,col)
+        {
+            if(col.dataIndx == 'lotName')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        if(ui.rowData.lotName && ui.rowData.lotName != null && ui.rowData.lotName.length > 0)
+                        var $myObj = $j('<a>').html(ui.rowData.lotName).attr('href','/'+ui.rowData.idLot).attr('target','_blank');
+                        return $j('<wrap>').append($myObj).html();
+                    }
+                });
+            }
+
+            else if(col.dataIndx == 'productName')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        var $myObj = $j('<a>').html(ui.rowData.productName).attr('href','/'+ui.rowData.idProduct).attr('target','_blank');
+                        return $j('<wrap>').append($myObj).html();
+                    },
+                    filter: { type: 'textbox', condition: 'contain', listeners: ['keyup'] }
+                });
+            }
+
+            else if(col.dataIndx == 'parentName')
+            {
+                $j.extend(col,{
+                    render:function(ui)
+                    {
+                        var $myObj = $j('<a>').html(ui.rowData.parentName).attr('href','/'+ui.rowData.idParent).attr('target','_blank');
+                        return $j('<wrap>').append($myObj).html();
+                    }
+                });
+            }
+
+            else if(col.dataIndx == 'origName' || col.dataIndx == 'destName')
+            {
+                $j.extend(col,{
+                    filter: { type: 'textbox', condition: 'contain', listeners: ['keyup'] }
+                });
+            }
+
+        });
+
+        var $gridDiv = $j('#detail');
+
+        $gridDiv.pqGrid(gridObj);
+
+        fn_appendExportLink($gridDiv);
+
+        $gridDiv.find('div.pq-toolbar select').val(gridObj.freezeCols);
+
+        $gridDiv.on('pqgridrefresh', function(event, ui)
+        {
+            //fn_refreshTotal($j(this),ui.pageData);
+        });
+    }
+
+    function fn_refreshGrid_detail()
+    {
+        fn_showSpinner();
+        var $gridDiv = $j('#detail'); 
+
+        var filter = {};
+        filter.dateFrom = [$j('#datepickerFrom').val()];
+        filter.dateThru = [$j('#datepickerThru').val()];
+        //filter.idVendor = [$j('#selectVendor').val()];
+
+        var groupBy = ['idLot','dateMove','idParent'];
+
+        Visualforce.remoting.Manager.invokeAction(
+            '{!$RemoteAction.gcInventoryMovementReport.inventoryMovementSummary}',
+            filter,groupBy,
+            function(result,event){if(event.status) fn_refreshGrid_callback($gridDiv,result);else {alert(event.message); fn_hideSpinner();}},
+            {buffer:true, escape:true, timeout:120000});    
+    }
+</script>
+</head>
+<div id="spinner" class="spinner" style="display:none;"></div>
+
+<div style="width:90%; margin:0 auto">
+<table width="100%">
+<tr style="text-align:center;">
+    <td width="45%"></td>
+    <td>
+        <table width="100%">
+            <tr style="text-align:center;">
+                <th style="text-align:center;">From Date</th>
+                <th style="text-align:center;">Thru Date</th>
+            </tr>
+            <tr style="text-align:center;">
+                <td style="text-align:center;">
+                <input type="text" id="datepickerFrom" style="text-align:center;z-index:1000"/>
+                </td>
+                <td style="text-align:center;">
+                    <input type="text" id="datepickerThru" style="text-align:center;z-index:1000"/>
+                </td>               
+            </tr>
+            <tr>
+                <td colspan="3" style="text-align:center;">
+                <br/>
+                    <input type="button" onclick="fn_refreshGrid_detail();" value="go!"/>
+                </td>
+            </tr>           
+        </table>
+    </td>
+    <td width="45%"></td>
+</tr>
+
+<tr>
+    <td colspan="3">
+        <div><div id="detail" style="z-index:1"></div></div>
+    </td>
+</tr>
+
+</table>
+</div>
+
+</apex:page>

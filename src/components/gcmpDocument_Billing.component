@@ -1,0 +1,407 @@
+<apex:component controller="gcDocument_Billing" access="global" layout="none">
+<apex:attribute name="attrIdBilling" assignTo="{!idBilling}" type="String" access="global" description="The Id of the Billing."/>
+
+<head>
+<style> 
+@page { 
+    size:portrait; 
+    margin-right:0.35in;
+    margin-left:0.35in;
+    margin-top:0.75in;
+    margin-bottom:0.5in;
+    border:0;
+    padding:0;
+    
+    @top-center{content: element(header);}
+    @bottom-center{content: element(footer);}
+}
+
+@page{
+     margin-top:1.25in; /*the added margin is to accomodate the additional information that is in the running header*/
+     margin-bottom:1.65in;
+}
+
+body{
+    margin:0 auto;
+    border:1px solid white;
+    padding:0;
+} 
+
+.runningHeader{
+    position:running(header);
+    width:100%;
+    border:1px solid white;
+    padding:0;
+    margin:0 auto;}
+
+.header{
+    border:0;
+    //margin-bottom:5px;
+}
+
+.runningFooter {
+    position: running(footer);
+    width:100%;
+    border:1px solid white;
+    padding:0;
+    margin:0 auto;
+}
+.footer {
+    font-size:11px;
+    border:0;
+}
+.headerLabel{
+    font-size:10px;
+    font-weight:bold;
+}
+.headerValue{
+    font-size:12px;
+    /* color:#404040; */
+}
+table{
+    width:100%;
+    border-collapse:collapse;
+}
+td{
+    text-align:left;
+    vertical-align:top;
+}
+*{
+    font-family: sans-serif;
+}
+firstLetter{
+    font-size:120%;
+}
+
+.pageNumber:before{
+    content:counter(page);
+}
+.pageCount:before{
+    content: counter(pages);
+}
+
+.border1{
+    border: 1px solid #000;
+}
+.center{
+    text-align:center;
+}
+.right{
+    text-align:right;
+}
+.left{
+    text-align:left;
+}
+.top{
+    vertical-align:top;
+}
+.font1{
+    font-size:11px;
+}
+.font2{
+    font-size:12px;
+}
+</style>
+
+</head>
+
+<div class="runningHeader">
+    <div class="header">
+        <table>
+            <tr>
+                <td style="text-align:left; vertical-align:top;" width="33%">
+                    <apex:image url="{!$Resource.ProdigyBWLogo}" width="237" height="78" />
+                </td>
+
+                <td style="text-align:center; vertical-align:top;" width="34%">
+                    <span style="font: 32px;">{!IF((bill.AcctSeed__Total__c >= 0),'Invoice','Credit Memo')}</span>
+                </td>
+
+                <td class="font1" style="text-align:right; vertical-align:top; padding-top:7px;"  width="33%">
+                    <table>
+                        <tr style="text-align: center; vertical-align: top;">
+                            <td class="border1 center">
+                                <b>Date</b> <br/>
+                                <apex:outputText value="{0, date, MMMM d','  yyyy}">
+                                    <apex:param value="{!bill.AcctSeed__Date__c}" /> 
+                                </apex:outputText>
+                            </td>
+                            <td class="border1 center">
+                                <b>Page</b> <br/>
+                                <span class="pageNumber"/>&nbsp;of&nbsp;<span class="pageCount"/>
+                            </td>
+                        </tr>
+                        <tr style="text-align: center; vertical-align: top;">
+                            <td colspan="2" class="border1 center">
+                                <b>{!IF((bill.AcctSeed__Total__c >= 0),'Invoice','Credit Memo')} Number</b> <br/>
+                                {!bill.Name}
+                            </td>
+                        </tr>
+                        <tr style="text-align: center; vertical-align: top;">
+                            <td colspan="2" class="border1 center">
+                                <b>Amount Due</b> <br/>
+                                <apex:outputText value="${0, number,###,##0.00}">
+                                    <apex:param value="{!bill.AcctSeed__Balance__c}"/>
+                                </apex:outputText>
+                            </td>
+                        </tr>                       
+                    </table>
+                </td>           
+            </tr>
+        </table>
+    </div>
+</div>
+
+<div class="runningFooter">
+    <div class="footer center">
+        <p style="font-size:9px;">
+        In consideration for provision of the invoiced product(s), and by paying the invoice associated with this purchase, purchaser acknowledges and agrees that product(s) purchased hereunder are for its “own use” as defined by Abbott Laboratories et. Al. v. Portland Retail Druggists Association, Inc., 425 U.S. 1 (1976), and shall not be used for resale, gift, or barter to or with another drug distributor. 
+        </p>
+        <span>This wholesale distributor purchased the specific unit of the prescription drug directly from the manufacturer, unless otherwise noted on pedigree.</span><br/>
+        <span>Invoices paid beyond net terms are subject to a late payment service fee of 2% per month late.</span><br/><br/>
+        <span><b>REMIT PAYMENT TO:</b></span><br/>
+        <span>Prodigy Health Supplier Corporation&nbsp;&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;&nbsp;PO Box 95429, Grapevine, TX 76099-9734&nbsp;&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;&nbsp;PH: (512)693-4376&nbsp;&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;&nbsp;FAX: (512)693-4067</span>
+    </div>
+</div>
+
+<div>
+    <table>
+        <tr class="headerLabel">
+            <td width="50%">
+                DISTRIBUTED BY:
+            </td>
+            <td width="1%"></td>
+            <td width="49%">
+                REMIT PAYMENT TO:
+            </td>
+        </tr>
+        <tr class="headerValue">
+            <td class="border1">
+                {!LEFT(accountDistributor.Name,75)}&nbsp;
+                <br/>
+                {!LEFT(accountDistributor.ShippingStreet,75)}&nbsp;
+                <br/>
+                {!LEFT(accountDistributor.ShippingCity,24)},&nbsp;{!LEFT(accountDistributor.ShippingState,24)}
+                <br/>
+                {!LEFT(accountDistributor.ShippingPostalCode,10)}&nbsp;
+                <br/>
+                <br/>
+                Phone: {!accountDistributor.Phone}
+            </td>
+            <td></td>
+            <td class="border1">
+                Prodigy Health Supplier
+                <br/>
+                PO Box 95429
+                <br/>
+                Grapevine, TX  
+                <br/>
+                76099-9734
+                <br/>
+                <br/>
+                Phone: (512)693-4376
+            </td>
+        </tr>
+    </table>
+</div>
+
+
+<div style="margin-top:5px;">
+    <table>
+        <tr class="headerLabel">
+            <td width="50%">
+                SOLD TO:
+            </td>
+            <td width="1%"></td>
+            <td width="49%">
+                SHIP TO:
+            </td>
+        </tr>
+        <tr class="headerValue">
+            <td class="border1">
+                {!LEFT(bill.AcctSeed__Customer__r.Name,75)}&nbsp;
+                <br/>
+                {!LEFT(bill.AcctSeed__Customer__r.Billing_Attention__c,75)}&nbsp;
+                <br/>
+                {!LEFT(bill.AcctSeed__Billing_Street__c,75)}&nbsp;
+                <br/>
+                {!LEFT(bill.AcctSeed__Billing_City__c,24)},&nbsp;{!LEFT(bill.AcctSeed__Billing_State__c,24)}
+                <br/>
+                {!LEFT(bill.AcctSeed__Billing_PostalCode__c,10)}&nbsp;
+                <br/>
+                <br/>
+                Billing Contact:
+                <br/>
+                {!bill.AcctSeed__Billing_Contact__r.Name}
+                <br/>
+                {!IF(bill.AcctSeed__Billing_Contact__r.Phone != null, bill.AcctSeed__Billing_Contact__r.Phone, bill.AcctSeed__Customer__r.Phone)}
+            </td>
+            <td></td>
+            <td class="border1">
+                {!LEFT(bill.Ship_To__r.Name,75)}&nbsp;
+                <br/>
+                {!LEFT(bill.Shipping_Attention__c,75)}&nbsp;
+                <br/>
+                {!LEFT(bill.AcctSeed__Shipping_Street__c,75)}&nbsp;
+                <br/>
+                {!LEFT(bill.AcctSeed__Shipping_City__c,24)},&nbsp;{!LEFT(bill.AcctSeed__Shipping_State__c,24)}          
+                <br/>
+                {!LEFT(bill.AcctSeed__Shipping_PostalCode__c,10)}&nbsp;
+                <br/>
+                <br/>
+                Shipping Contact:
+                <br/>
+                {!bill.AcctSeed__Shipping_Contact__r.Name}
+                <br/>
+                {!IF(bill.AcctSeed__Shipping_Contact__r.Phone != null, bill.AcctSeed__Shipping_Contact__r.Phone, bill.AcctSeed__Customer__r.Phone)}
+            </td>
+        </tr>
+    </table>
+</div>
+
+<div style="margin-top:5px;">
+    <table>
+        <tr>
+            <td width="20%" class="border1 center top font1">
+                <span  class="headerLabel" style="font-weight:bold">Customer #</span><br/><span>{!bill.AcctSeed__Customer__r.AccountNumber}</span>
+            </td>
+            <td width="20%" class="border1 center top font1">
+                <span  class="headerLabel" style="font-weight:bold">Contract #</span><br/><span></span>
+            </td>   
+            <td width="20%" class="border1 center top font1">
+                <span  class="headerLabel" style="font-weight:bold">Drop Ship Account #</span><br/><span>{!bill.AcctSeed__Customer__r.Drop_Ship_Account_Number__c}</span>
+            </td>
+            <td width="20%" class="border1 center top font1">
+                <span  class="headerLabel" style="font-weight:bold">Customer Lic #</span><br/><span>{!bill.AcctSeed__Customer__r.License_Number__c}</span>
+            </td>
+            <td width="20%" class="border1 center top font1">
+                <span  class="headerLabel" style="font-weight:bold">Shipper Lic #</span><br/><span>{!bill.AcctSeedERP__Sales_Order__r.Warehouse__r.Distributor__r.License_Number__c}</span>
+            </td>   
+        </tr>
+    </table>
+</div>
+<div style="margin-top:5px;">
+    <table>
+        <tr>
+            <td width="20%" class="border1 center top font1">
+                <span  class="headerLabel" style="font-weight:bold">Order #</span><br/><span>{!bill.AcctSeedERP__Sales_Order__r.Name}</span>
+            </td>   
+            <td width="20%" class="border1 center top font1">
+                <span  class="headerLabel" style="font-weight:bold">Purchase Order #</span><br/><span>{!bill.AcctSeed__PO_Number__c}</span>
+            </td>
+            <td width="40%" class="border1 center top font1">
+                <span  class="headerLabel" style="font-weight:bold">Ship Via</span><br/><span>{!bill.AcctSeedERP__Sales_Order__r.Shipping_Method__c}</span>
+            </td>
+            <td width="20%" class="border1 center top font1">
+                <span  class="headerLabel" style="font-weight:bold">Terms</span><br/><span>{!bill.AcctSeed__Billing_Terms_Name__c}</span>
+            </td>   
+        </tr>
+    </table>
+</div>
+<div style="margin-top:5px;">
+    <table>
+        <tr class="headerLabel">
+            <td>
+                ITEMS SOLD:
+            </td>
+        </tr>
+        <tr>
+            <td width="40%" class="border1 center top font2">
+                <span  class="headerLabel" style="font-weight:bold">Product</span>
+            </td>
+            <td width="20%" class="border1 center top font2">
+                <span  class="headerLabel" style="font-weight:bold">Variant</span>
+            </td>           
+            <td width="15%" class="border1 center top font2">
+                <span  class="headerLabel" style="font-weight:bold">Lot &amp; Exp.</span>
+            </td>           
+            <td width="5%" class="border1 center top font2">
+                <span  class="headerLabel" style="font-weight:bold">Qty</span>
+            </td>
+            <td width="10%" class="border1 center top font2">
+                <span  class="headerLabel" style="font-weight:bold">$/ea</span>
+            </td>
+            <td width="10%" class="border1 center top font2">
+                <span  class="headerLabel" style="font-weight:bold">Total</span>
+            </td>
+        </tr>
+        <apex:repeat value="{!bill.AcctSeed__Project_Billing_Lines__r}" var="line">
+        <tr style="page-break-inside:avoid;">
+            <td class="border1 top font1">
+                <span>{!line.AcctSeed__Product__r.Name}</span>
+                <br/>
+                <span>{!line.AcctSeed__Product__r.ProductCode}</span>
+                <br/>
+                <b>Storage Requirement: </b><span>{!line.AcctSeed__Product__r.Storage_Requirement__c}</span>
+            </td>
+            <td class="border1 top left font1">
+                <span style="display:{!IF(line.AcctSeed__Product__r.Variable_Price__c,'','none')}">
+                    <b>units: </b><apex:outputText value="{0, number,###,##0}">
+                        <apex:param value="{!line.AcctSeedERP__Sales_Order_Line__r.Lot__r.Variant_Qty__c}"/>
+                    </apex:outputText>
+                    &nbsp;
+                    {!line.AcctSeed__Product__r.Pricing_Units__c}
+                    <br/>
+                    <b>$/unit: </b>
+                    <apex:outputText value="${0, number,###,##0.0000}">
+                        <apex:param value="{!line.AcctSeedERP__Sales_Order_Line__r.Variant_Unit_Price__c}"/>
+                    </apex:outputText>
+                    /{!line.AcctSeed__Product__r.Pricing_Units__c}
+                </span>
+            </td>
+            <td class="border1 top font1">
+                <span>{!line.AcctSeedERP__Sales_Order_Line__r.Lot__r.Name}</span>
+                <br/>
+                <span><apex:outputText value="{0, date, MM/dd/yyyy}"><apex:param value="{!line.AcctSeedERP__Sales_Order_Line__r.Lot__r.Expiration_Date__c}" /></apex:outputText></span>
+            </td>
+            <td class="border1 top center font1">
+                <apex:outputText value="{0, number,###,##0}">
+                    <apex:param value="{!line.AcctSeed__Hours_Units__c}"/>
+                </apex:outputText>
+            </td>
+            <td class="border1 top right font1">
+                <apex:outputText value="${0, number, ###,##0.00}">
+                    <apex:param value="{!line.AcctSeed__Rate__c}"/>
+                </apex:outputText>
+            </td>   
+            <td class="border1 top right font1">
+                <apex:outputText value="${0, number,###,##0.00}">
+                    <apex:param value="{!line.AcctSeed__Total__c}"/>
+                </apex:outputText>
+            </td>               
+        </tr>       
+        </apex:repeat>
+        <tr>
+            <td colspan="5" class="right headerLabel">sub-total:&nbsp;</td>
+            <td class="border1 right top headerLabel">
+                <apex:outputText value="${0, number,###,##0.00}">
+                    <apex:param value="{!bill.AcctSeed__Total__c}"/>
+                </apex:outputText>
+            </td>
+        </tr>
+        <tr>
+            <td colspan="5" class="right headerLabel">payments &amp; credits:&nbsp;</td>
+            <td class="border1 right top headerLabel">
+                <apex:outputText value="${0, number,###,##0.00}">
+                    <apex:param value="{!bill.AcctSeed__Total__c - bill.AcctSeed__Balance__c}"/>
+                </apex:outputText>
+            </td>
+        </tr>
+        <tr>
+            <td colspan="5" class="right headerLabel">balance due:&nbsp;</td>
+            <td class="border1 right top headerLabel">
+                <apex:outputText value="${0, number,###,##0.00}">
+                    <apex:param value="{!bill.AcctSeed__Balance__c}"/>
+                </apex:outputText>
+            </td>
+        </tr>               
+    </table>
+</div>
+
+<br/><br/>
+<div style="page-break-inside:avoid; width: 65%;margin-bottom:0; white-space: pre-line; display: {!IF(ISBLANK(bill.AcctSeed__Billing_Comment__c), 'none', 'inline')};">
+    <span class="font1" style="margin-bottom:0"><b>Comments</b></span>
+    <p class="font1" style="margin-bottom:0">{!bill.AcctSeed__Billing_Comment__c}</p>
+</div>
+
+</apex:component>

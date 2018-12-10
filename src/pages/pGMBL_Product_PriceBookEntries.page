@@ -1,0 +1,398 @@
+<apex:page standardController="Product2" extensions="cGMBL_Product_Ext,cGMBL_PriceBookEntry" showHeader="false" sidebar="false" showChat="false">
+
+<head>
+<style>
+.spinner {
+    background: rgba(0,0,0,.2);
+    background-image: url('/img/loading32.gif');
+    background-repeat: no-repeat;
+    background-attachment: fixed;	    
+    background-position: center;
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    z-index: 9998;
+}
+.modal {
+    background: rgba(0,0,0,.2);
+    background-repeat: no-repeat;
+    background-attachment: fixed;	    
+    background-position: center;
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    z-index: 100;
+}
+tr.hoverBlue:hover td{background:#00EEFF !important;}
+tr.total td{
+	font-weight: bold;
+}
+.link{
+	cursor:pointer;
+	text-decoration:underline;
+	color:blue;
+}
+.cursorIsPointer{
+	cursor:pointer;
+}
+.blue{
+	color:blue;
+}
+#prices div.pq-grid-footer{
+	display:none;
+}
+</style>
+<apex:includeScript value="{!$Resource.GMBLJS__jQuery}"/>
+<apex:stylesheet value="{!URLFOR($Resource.GMBLJS__jQueryUI,'/jquery-ui/jquery-ui.min.css')}"/>
+<apex:includeScript value="{!URLFOR($Resource.GMBLJS__jQueryUI,'/jquery-ui/jquery-ui.min.js')}"/>
+<apex:includeScript value="{!$Resource.GMBLJS__accountingJS}"/>
+
+<apex:stylesheet value="{!URLFOR($Resource.GMBLJS__pqGridPro,'/pqgrid.min.css')}"/>
+<apex:includeScript value="{!URLFOR($Resource.GMBLJS__pqGridPro,'/pqgrid.min.js')}"/>
+
+<script>function setFocusOnLoad() {}</script>
+<script type="text/javascript">
+
+    $j = jQuery.noConflict();
+
+    var spinner = +0;
+
+    $j(document).ready(function()
+    {
+    	fn_initGrid();
+    	fn_refreshGrid();
+    });
+
+
+	accounting.settings = {
+		currency: {
+			symbol : "$",   // default currency symbol is '$'
+			format: "%s%v", // controls output: %s = symbol, %v = value/number (can be object: see below)
+			decimal : ".",  // decimal point separator
+			thousand: ",",  // thousands separator
+			precision : 6   // decimal places
+		},
+		number: {
+			precision : 0,  // default precision on numbers is 0
+			thousand: ",",
+			decimal : "."
+		}
+	}
+
+	function fn_showSpinner()
+	{
+		spinner ++;
+		if(spinner > 0)
+		$j('#spinner').show();
+	}
+
+	function fn_hideSpinner()
+	{
+		spinner --;
+		if(spinner <= 0)
+		{
+			$j('#spinner').hide();
+			spinner = 0;
+		}
+	}
+
+	function HtmlDecode(s)
+	{
+		return $j('<div>').html(s).text();
+	}
+
+	function fn_refreshTotal($gridDiv,pageData)
+	{
+		var totalRow = {isTotal:true, pq_rowcls:'total'};
+		var totalColumns = [];
+		$j.each($gridDiv.pqGrid('getColModel'), function(i,col)
+		{
+			if(col.gTotal)
+			{
+				totalRow[col.dataIndx] = +0;
+				totalColumns.push(col.dataIndx);
+			}
+			else
+			{
+				totalRow[col.dataIndx] = null;
+			}
+		});
+
+		//aggregate the totals
+		$j.each(pageData, function(i,row)
+		{
+			$j.each(totalColumns, function(j,dataIndx)
+			{
+				if(!isNaN(row[dataIndx]))
+					totalRow[dataIndx] += parseFloat(row[dataIndx]);
+			});
+		});
+
+		if($gridDiv.find('.pq-grid-summary').length == 0)
+			$j("<div class='pq-grid-summary'></div>").prependTo($gridDiv.find('.pq-grid-bottom'));
+		$gridDiv.pqGrid("createTable", {data:[totalRow], $cont: $gridDiv.find('div.pq-grid-summary')});		
+	}
+
+	function fn_refreshGrid_callback($gridDiv, listObj)
+	{
+		var data = [];
+
+		$j.each(listObj, function(i,obj)
+		{
+			data.push(obj.mapProperty);
+		});
+		$gridDiv.pqGrid('option','dataModel.data', data);
+
+		if(listObj.length > 0)
+		{
+			$j.each($gridDiv.pqGrid('getColModel'), function(i,col)
+			{
+				if(col.gFilter)
+				{
+					col.filter.cache = null;
+					col.filter.options = $gridDiv.pqGrid('getData',{dataIndx:[col.dataIndx]});
+				}
+			});
+
+			$gridDiv.pqGrid('refreshDataAndView');
+		}
+		$gridDiv.pqGrid('refreshView');
+
+		fn_hideSpinner();
+		return;	
+	}
+
+	function fn_initFormat(colModel)
+	{
+		$j.each(colModel, function(i,col)
+		{
+			if(col.gFormat == 'number')
+			{
+				$j.extend(col,{
+					align:'center',
+					render: function(ui)
+					{
+						var cont = eval('ui.rowData.'+ui.dataIndx);
+						if (cont != null && !isNaN(cont))
+							return accounting.formatNumber(cont);
+					}
+				});
+			}
+			else if(col.gFormat == 'money')
+			{
+				$j.extend(col,{
+					align:'right',
+					halign:'right',
+					render: function(ui)
+					{
+						var cont = eval('ui.rowData.'+ui.dataIndx);
+						if (cont && cont != null && !isNaN(cont))
+							return accounting.formatMoney(cont);
+					}
+				});
+			}
+			else if(col.gFormat == 'checkbox')
+			{
+				$j.extend(col,{
+					align:'center',
+					halign:'center',
+					render: function(ui)
+					{
+						if(ui.rowData.pq_rowcls && ui.rowData.pq_rowcls.indexOf('total') >= 0) return;
+
+						var cont = eval('ui.rowData.'+ui.dataIndx);
+						var $wrap = $j('<wrap>').append($j('<input>').attr('type','checkbox').attr('disabled','disabled'));
+						if(cont == 'true')
+						{
+							$wrap.children().first().attr('checked','checked');
+							return $wrap.html();
+						}
+						else
+						{
+							return $wrap.html();
+						}
+					}
+				});				
+			}
+		});
+	}
+
+	function fn_initFilter(colModel)
+	{
+		$j.each(colModel, function(i,col)
+		{
+			if(col.gFilter)
+			{
+				$j.extend(col,{
+		        	filter:
+		        	{
+			        	type:'select',
+			            condition: 'equal',
+			            prepend: { '': '--All--' },
+			            valueIndx: col.dataIndx,
+			            labelIndx: col.dataIndx,
+			            listeners: ['change'],
+			            value:'',
+			            cache:null,
+			            options:null
+		        	}
+		    	});
+			}
+		});
+	}
+
+
+	function fn_recalcMarkup()
+	{
+		fn_showSpinner();
+
+		Visualforce.remoting.Manager.invokeAction(
+			'{!$RemoteAction.cGMBL_PriceBookEntry.recalcMarkup}',
+			function(result,event){if(event.status){ fn_refreshGrid(); fn_hideSpinner();}else {alert(event.message); fn_hideSpinner();}});	
+	}
+
+	function fn_initGrid()
+	{
+		var gridObj = { title:"",
+						collapsible:{on:false,collapsed:false},
+						columnTemplate: {sortable:false, editable:false, align:'center'},
+						dataModel:{data:null, sorting:'local', location:'local'},
+						dragColumns:{enabled:false},
+						editable:true,
+						filterModel:{on:false, mode:'AND', header:false},
+						freezeCols:0,
+						freezeRows:0,
+						height:250,
+						historyModel:{on:false},
+						hoverMode:null,
+						hwrap:false,
+						numberCell:{show:false},
+						pageModel: {type:null},
+						pasteModel:{on:false},
+						resizable: false,
+						roundCorners: false,
+						scrollModel: {autoFit:true},
+						selectionModel: {type:null},
+						showBottom:true,
+						showHeader:true,
+						showTitle:false,
+						showTop:true,
+						showToolbar:false,
+						sortable:true,
+						swipeModel:{on:false},
+						virtualX: false,
+						virtualXHeader: false,
+						virtualY: false,
+						width:'auto',
+						wrap:false};
+
+		gridObj.colModel=[{dataIndx:'priceBookName',		title:'Price Book Name', align:'left'},
+						  {dataIndx:'isStandardPriceBook',	title:'Is Standard Price Book', gFormat:'checkbox'},
+						  {dataIndx:'isDefaultPurchasing',	title:'Is Default Purchasing', gFormat:'checkbox'},
+						  {dataIndx:'isMarginBasis',		title:'Is Margin Basis', gFormat:'checkbox'},
+						  {dataIndx:'useStandardPrice',		title:'Use Standard Price', gFormat:'checkbox'},
+						  {dataIndx:'margin',				title:'Margin'},
+						  {dataIndx:'unitPrice',			title:'Unit Price'},
+						  {dataIndx:'effectiveDate',		title:'Effective Date', dataType:'date'},
+						  {dataIndx:'isActive',				title:'Active', gFormat:'checkbox'}];
+
+		//fn_initFilter(gridObj.colModel);
+		fn_initFormat(gridObj.colModel);
+
+		$j.each(gridObj.colModel, function(i,col)
+		{
+			if(col.dataIndx == 'margin')
+			{
+				$j.extend(col,{
+					render:function(ui)
+					{
+						if(!ui.rowData.margin || ui.rowData.margin.length == 0) return ('<span style="cursor:pointer">...</a>');
+						var options = {
+							symbol : "%",
+							decimal : ".",
+							thousand: ",",
+							precision : 2,
+							format: "%v%s"
+						};
+						return('<a href="#">'+accounting.formatMoney(ui.rowData.margin,options)+'<a>');
+					},
+					editable: true,
+		            editor: { select: true },
+		            editModel: {clicksToEdit:1, pressToEdit:false, filterKeys:true, keyUpDown:false, saveKey:$j.ui.keyCode.ENTER}
+				});				
+			}
+			if(col.dataIndx == 'unitPrice')
+			{
+				$j.extend(col,{
+					render:function(ui)
+					{
+						return('<a href="#">'+accounting.formatMoney(ui.rowData.unitPrice)+'<a>');
+					},
+					editable: true,
+		            editor: { select: true },
+		            validations: [{ type: 'gte', value: 0, msg: "must be >= 0"}],
+		            editModel: {clicksToEdit:1, pressToEdit:false, filterKeys:true, keyUpDown:false, saveKey:$j.ui.keyCode.ENTER}
+				});				
+			}
+
+		});
+
+		var $gridDiv = $j('#prices');
+
+		$gridDiv.pqGrid(gridObj);
+
+		$gridDiv.on('pqgridcellsave', function(event,ui)
+		{
+			if(ui.dataIndx == 'unitPrice')
+			{
+				if(!ui.rowData.unitPrice || isNaN(ui.rowData.unitPrice)) ui.rowData.unitPrice = 0;
+				Visualforce.remoting.Manager.invokeAction(
+					'{!$RemoteAction.cGMBL_Product_Ext.updateUnitPrice}',
+					ui.rowData.idPBE, ui.rowData.unitPrice,
+					function(result,event){if(event.status){fn_recalcMarkup();}else {alert(event.message); fn_hideSpinner();}});				
+			}
+			else if(ui.dataIndx == 'margin')
+			{
+				if(!ui.rowData.margin || ui.rowData.margin == '' || isNaN(ui.rowData.margin)) ui.rowData.margin = null;
+				Visualforce.remoting.Manager.invokeAction(
+					'{!$RemoteAction.cGMBL_Product_Ext.updateMargin}',
+					ui.rowData.idPBE, ui.rowData.margin,
+					function(result,event){if(event.status){fn_recalcMarkup();}else {alert(event.message); fn_hideSpinner();}});				
+			}
+		});
+	}
+
+	function fn_refreshGrid()
+	{
+		fn_showSpinner();
+		var $gridDiv = $j('#prices');
+
+		Visualforce.remoting.Manager.invokeAction(
+			'{!$RemoteAction.cGMBL_Product_Ext.retrievePrices}',
+			'{!Id}',
+			function(result,event){if(event.status) fn_refreshGrid_callback($gridDiv,result);else {alert(event.message); fn_hideSpinner();}},
+			{buffer:true, escape:true, timeout:120000});	
+	}
+
+</script>
+</head>
+
+	<div id="spinner" class="spinner" style="display:none;"></div>
+	<div id="modal" class="modal" style="display:none;"></div>	
+	<div style="margin:0 auto; width:100%">
+		
+		<apex:form >
+			<div style="text-align:center;">
+				<button type="button" onclick="window.open('/ui/pricebook/SelectSearch?addTo={!Product2.Id}&retURL=/{!Product2.Id}','_parent');">Add to Price Book</button>
+			</div>
+			<br/>
+			<div><div id="prices"></div></div>
+		</apex:form>
+
+	</div>
+
+</apex:page>
